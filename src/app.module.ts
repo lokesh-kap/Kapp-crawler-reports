@@ -6,6 +6,8 @@ import { ConfigModule } from '@nestjs/config';
 import * as dotenv from 'dotenv';
 import { CommonModule } from './common/common.module';
 import { ScrapperModule } from './scrapper/scrapper.module';
+import { ProviderConfigModule } from './provider-config/provider-config.module';
+import { ClientWiseModule } from './client-wise/client-wise.module';
 
 dotenv.config();
 @Module({
@@ -35,7 +37,9 @@ dotenv.config();
 
     ConfigModule.forRoot({ isGlobal: true }),
     CommonModule,
-    ScrapperModule
+    ScrapperModule,
+    ProviderConfigModule,
+    ClientWiseModule,
   ],
   controllers: [AppController],
   providers: [AppService],
