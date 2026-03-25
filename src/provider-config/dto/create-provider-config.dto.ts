@@ -1,6 +1,4 @@
 import {
-  ArrayNotEmpty,
-  IsArray,
   IsBoolean,
   IsInt,
   IsNotEmpty,
@@ -30,6 +28,10 @@ export class ProviderFilterDto {
 }
 
 export class ProviderCredentialDto {
+  @IsOptional()
+  @IsUrl()
+  login_url?: string;
+
   @IsString()
   @IsNotEmpty()
   login: string;
@@ -66,25 +68,6 @@ export class CreateProviderConfigDto {
 
   @IsInt()
   config_id: number;
-
-  @IsUrl()
-  url: string;
-
-  @IsArray()
-  @ArrayNotEmpty()
-  @ValidateNested({ each: true })
-  @Type(() => ProviderFilterDto)
-  filters: ProviderFilterDto[];
-
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => ProviderFilterDto)
-  @IsOptional()
-  advance_filters?: ProviderFilterDto[];
-
-  @IsOptional()
-  @IsBoolean()
-  is_advance_filters?: boolean;
 
   @ValidateNested()
   @Type(() => ProviderCredentialDto)

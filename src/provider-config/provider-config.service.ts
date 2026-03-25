@@ -4,19 +4,24 @@ import { Repository } from 'typeorm';
 import { ProviderConfigEntity } from './entitites/provider-config.entity';
 import { CreateProviderConfigDto } from './dto/create-provider-config.dto';
 import { UpdateProviderConfigDto } from './dto/update-provider-config.dto';
+import { ProviderLeadsConfigEntity } from './entitites/provider-leads-config.entity';
+import { ProviderSummaryConfigEntity } from './entitites/provider-summary-config.entity';
+import { UpsertProviderScraperConfigDto } from './dto/upsert-provider-scraper-config.dto';
 
 @Injectable()
 export class ProviderConfigService {
   constructor(
     @InjectRepository(ProviderConfigEntity)
     private readonly providerConfigRepository: Repository<ProviderConfigEntity>,
+    @InjectRepository(ProviderLeadsConfigEntity)
+    private readonly providerLeadsConfigRepository: Repository<ProviderLeadsConfigEntity>,
+    @InjectRepository(ProviderSummaryConfigEntity)
+    private readonly providerSummaryConfigRepository: Repository<ProviderSummaryConfigEntity>,
   ) {}
 
   create(createProviderConfigDto: CreateProviderConfigDto) {
     const payload = this.providerConfigRepository.create({
       ...createProviderConfigDto,
-      advance_filters: createProviderConfigDto.advance_filters ?? [],
-      is_advance_filters: createProviderConfigDto.is_advance_filters ?? false,
       is_active: createProviderConfigDto.is_active ?? true,
       credentials: createProviderConfigDto.credentials ?? null,
     });
@@ -40,6 +45,72 @@ export class ProviderConfigService {
       order: { name: 'ASC' },
     });
     return rows;
+  }
+
+  async getLeadsConfigByConfigId(config_id: number) {
+    return this.providerLeadsConfigRepository.findOne({ where: { config_id } });
+  }
+
+  async getSummaryConfigByConfigId(config_id: number) {
+    return this.providerSummaryConfigRepository.findOne({ where: { config_id } });
+  }
+
+  async upsertLeadsConfig(payload: UpsertProviderScraperConfigDto) {
+    const commonConfig = await this.providerConfigRepository.findOne({
+      where: { config_id: payload.config_id },
+    });
+    if (!commonConfig) {
+      throw new NotFoundException(
+        `Provider config with config_id ${payload.config_id} not found`,
+      );
+    }
+
+    const existing = await this.getLeadsConfigByConfigId(payload.config_id);
+    if (existing) {
+      const merged = this.providerLeadsConfigRepository.merge(existing, {
+        ...payload,
+        provider_config_id: commonConfig.id,
+      });
+      return this.providerLeadsConfigRepository.save(merged);
+    }
+    const created = this.providerLeadsConfigRepository.create({
+      ...payload,
+      provider_config_id: commonConfig.id,
+      filters: payload.filters ?? [],
+      advance_filters: payload.advance_filters ?? [],
+      is_advance_filters: payload.is_advance_filters ?? false,
+      is_active: payload.is_active ?? true,
+    });
+    return this.providerLeadsConfigRepository.save(created);
+  }
+
+  async upsertSummaryConfig(payload: UpsertProviderScraperConfigDto) {
+    const commonConfig = await this.providerConfigRepository.findOne({
+      where: { config_id: payload.config_id },
+    });
+    if (!commonConfig) {
+      throw new NotFoundException(
+        `Provider config with config_id ${payload.config_id} not found`,
+      );
+    }
+
+    const existing = await this.getSummaryConfigByConfigId(payload.config_id);
+    if (existing) {
+      const merged = this.providerSummaryConfigRepository.merge(existing, {
+        ...payload,
+        provider_config_id: commonConfig.id,
+      });
+      return this.providerSummaryConfigRepository.save(merged);
+    }
+    const created = this.providerSummaryConfigRepository.create({
+      ...payload,
+      provider_config_id: commonConfig.id,
+      filters: payload.filters ?? [],
+      advance_filters: payload.advance_filters ?? [],
+      is_advance_filters: payload.is_advance_filters ?? false,
+      is_active: payload.is_active ?? true,
+    });
+    return this.providerSummaryConfigRepository.save(created);
   }
 
   async findOne(id: number) {

@@ -12,6 +12,7 @@ import { ClientWiseService } from './client-wise.service';
 import { CreateClientWiseDto } from './dto/create-client-wise.dto';
 import { UpdateClientWiseDto } from './dto/update-client-wise.dto';
 import { CreateClientWiseFromProviderDto } from './dto/create-from-provider.dto';
+import { UpsertClientWiseScraperConfigDto } from './dto/upsert-client-wise-scraper-config.dto';
 
 @Controller('client-wise')
 export class ClientWiseController {
@@ -55,6 +56,34 @@ export class ClientWiseController {
       year,
       configId,
     );
+  }
+
+  @Get('leads-config/client/:clientId/year/:year/config/:configId')
+  getLeadsConfig(
+    @Param('clientId', ParseIntPipe) clientId: number,
+    @Param('year', ParseIntPipe) year: number,
+    @Param('configId', ParseIntPipe) configId: number,
+  ) {
+    return this.clientWiseService.getLeadsConfig(clientId, year, configId);
+  }
+
+  @Post('leads-config')
+  upsertLeadsConfig(@Body() payload: UpsertClientWiseScraperConfigDto) {
+    return this.clientWiseService.upsertLeadsConfig(payload);
+  }
+
+  @Get('summary-config/client/:clientId/year/:year/config/:configId')
+  getSummaryConfig(
+    @Param('clientId', ParseIntPipe) clientId: number,
+    @Param('year', ParseIntPipe) year: number,
+    @Param('configId', ParseIntPipe) configId: number,
+  ) {
+    return this.clientWiseService.getSummaryConfig(clientId, year, configId);
+  }
+
+  @Post('summary-config')
+  upsertSummaryConfig(@Body() payload: UpsertClientWiseScraperConfigDto) {
+    return this.clientWiseService.upsertSummaryConfig(payload);
   }
 
   @Get(':id')

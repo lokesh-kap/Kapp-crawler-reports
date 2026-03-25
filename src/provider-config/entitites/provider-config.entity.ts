@@ -14,6 +14,7 @@ export type ProviderFilter = {
 };
 
 export type ProviderCredential = {
+  login_url?: string;
   login: string;
   password: string;
   login_selector_type?: string;
@@ -39,18 +40,6 @@ export class ProviderConfigEntity {
 
   @Column({ type: 'int', unique: true })
   config_id: number;
-
-  @Column({ type: 'text' })
-  url: string;
-
-  @Column({ type: 'jsonb', default: () => "'[]'" })
-  filters: ProviderFilter[];
-
-  @Column({ type: 'jsonb', default: () => "'[]'" })
-  advance_filters: ProviderFilter[];
-
-  @Column({ type: 'boolean', default: false })
-  is_advance_filters: boolean;
 
   @Column({ type: 'jsonb', nullable: true })
   credentials: ProviderCredential | null;

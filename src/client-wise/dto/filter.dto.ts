@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, IsUrl } from 'class-validator';
 
 export class FilterDto {
   @IsString()
@@ -19,6 +19,10 @@ export class FilterDto {
 }
 
 export class CredentialDto {
+  @IsOptional()
+  @IsUrl()
+  login_url?: string;
+
   @IsString()
   @IsNotEmpty()
   login: string;

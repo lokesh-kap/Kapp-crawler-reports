@@ -6,6 +6,9 @@ import { CreateClientWiseDto } from './dto/create-client-wise.dto';
 import { UpdateClientWiseDto } from './dto/update-client-wise.dto';
 import { CreateClientWiseFromProviderDto } from './dto/create-from-provider.dto';
 import { ProviderConfigEntity } from '../provider-config/entitites/provider-config.entity';
+import { ClientWiseLeadsConfigEntity } from './entities/client-wise-leads-config.entity';
+import { ClientWiseSummaryConfigEntity } from './entities/client-wise-summary-config.entity';
+import { UpsertClientWiseScraperConfigDto } from './dto/upsert-client-wise-scraper-config.dto';
 
 @Injectable()
 export class ClientWiseService {
@@ -14,13 +17,15 @@ export class ClientWiseService {
     private readonly clientWiseRepository: Repository<ClientWiseEntity>,
     @InjectRepository(ProviderConfigEntity)
     private readonly providerConfigRepository: Repository<ProviderConfigEntity>,
+    @InjectRepository(ClientWiseLeadsConfigEntity)
+    private readonly clientWiseLeadsConfigRepository: Repository<ClientWiseLeadsConfigEntity>,
+    @InjectRepository(ClientWiseSummaryConfigEntity)
+    private readonly clientWiseSummaryConfigRepository: Repository<ClientWiseSummaryConfigEntity>,
   ) {}
 
   create(createClientWiseDto: CreateClientWiseDto) {
     const payload = this.clientWiseRepository.create({
       ...createClientWiseDto,
-      advance_filters: createClientWiseDto.advance_filters ?? [],
-      is_advance_filters: createClientWiseDto.is_advance_filters ?? false,
       credentials: createClientWiseDto.credentials ?? null,
       is_active: createClientWiseDto.is_active ?? true,
       config_id: createClientWiseDto.config_id ?? null,
@@ -42,11 +47,6 @@ export class ClientWiseService {
 
     const clientWisePayload = this.clientWiseRepository.create({
       name: payload.name ?? providerConfig.name,
-      url: payload.url ?? providerConfig.url,
-      filters: payload.filters ?? providerConfig.filters,
-      advance_filters: payload.advance_filters ?? providerConfig.advance_filters,
-      is_advance_filters:
-        payload.is_advance_filters ?? providerConfig.is_advance_filters ?? false,
       credentials: payload.credentials ?? providerConfig.credentials ?? null,
       is_active: payload.is_active ?? providerConfig.is_active,
       client_id: payload.client_id,
@@ -81,6 +81,88 @@ export class ClientWiseService {
     });
     if (!row) return null;
     return row;
+  }
+
+  getLeadsConfig(client_id: number, year: number, config_id: number) {
+    return this.clientWiseLeadsConfigRepository.findOne({
+      where: { client_id, year, config_id },
+    });
+  }
+
+  getSummaryConfig(client_id: number, year: number, config_id: number) {
+    return this.clientWiseSummaryConfigRepository.findOne({
+      where: { client_id, year, config_id },
+    });
+  }
+
+  async upsertLeadsConfig(payload: UpsertClientWiseScraperConfigDto) {
+    const commonConfig = await this.findByClientYearAndConfigId(
+      payload.client_id,
+      payload.year,
+      payload.config_id,
+    );
+    if (!commonConfig) {
+      throw new NotFoundException(
+        `Client wise common config not found for client_id ${payload.client_id}, year ${payload.year}, config_id ${payload.config_id}`,
+      );
+    }
+
+    const existing = await this.getLeadsConfig(
+      payload.client_id,
+      payload.year,
+      payload.config_id,
+    );
+    if (existing) {
+      const merged = this.clientWiseLeadsConfigRepository.merge(existing, {
+        ...payload,
+        client_wise_id: commonConfig.id,
+      });
+      return this.clientWiseLeadsConfigRepository.save(merged);
+    }
+    const created = this.clientWiseLeadsConfigRepository.create({
+      ...payload,
+      client_wise_id: commonConfig.id,
+      filters: payload.filters ?? [],
+      advance_filters: payload.advance_filters ?? [],
+      is_advance_filters: payload.is_advance_filters ?? false,
+      is_active: payload.is_active ?? true,
+    });
+    return this.clientWiseLeadsConfigRepository.save(created);
+  }
+
+  async upsertSummaryConfig(payload: UpsertClientWiseScraperConfigDto) {
+    const commonConfig = await this.findByClientYearAndConfigId(
+      payload.client_id,
+      payload.year,
+      payload.config_id,
+    );
+    if (!commonConfig) {
+      throw new NotFoundException(
+        `Client wise common config not found for client_id ${payload.client_id}, year ${payload.year}, config_id ${payload.config_id}`,
+      );
+    }
+
+    const existing = await this.getSummaryConfig(
+      payload.client_id,
+      payload.year,
+      payload.config_id,
+    );
+    if (existing) {
+      const merged = this.clientWiseSummaryConfigRepository.merge(existing, {
+        ...payload,
+        client_wise_id: commonConfig.id,
+      });
+      return this.clientWiseSummaryConfigRepository.save(merged);
+    }
+    const created = this.clientWiseSummaryConfigRepository.create({
+      ...payload,
+      client_wise_id: commonConfig.id,
+      filters: payload.filters ?? [],
+      advance_filters: payload.advance_filters ?? [],
+      is_advance_filters: payload.is_advance_filters ?? false,
+      is_active: payload.is_active ?? true,
+    });
+    return this.clientWiseSummaryConfigRepository.save(created);
   }
 
   async findOne(id: number) {

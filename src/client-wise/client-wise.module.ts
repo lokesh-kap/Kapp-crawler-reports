@@ -4,9 +4,18 @@ import { ClientWiseController } from './client-wise.controller';
 import { ClientWiseService } from './client-wise.service';
 import { ClientWiseEntity } from './entities/client-wise.entity';
 import { ProviderConfigEntity } from '../provider-config/entitites/provider-config.entity';
+import { ClientWiseLeadsConfigEntity } from './entities/client-wise-leads-config.entity';
+import { ClientWiseSummaryConfigEntity } from './entities/client-wise-summary-config.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ClientWiseEntity, ProviderConfigEntity])],
+  imports: [
+    TypeOrmModule.forFeature([
+      ClientWiseEntity,
+      ProviderConfigEntity,
+      ClientWiseLeadsConfigEntity,
+      ClientWiseSummaryConfigEntity,
+    ]),
+  ],
   controllers: [ClientWiseController],
   providers: [ClientWiseService],
   exports: [ClientWiseService],

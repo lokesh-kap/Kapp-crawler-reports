@@ -24,18 +24,6 @@ export class ClientWiseEntity {
   @Column({ type: 'varchar', length: 255 })
   name: string;
 
-  @Column({ type: 'text' })
-  url: string;
-
-  @Column({ type: 'jsonb', default: () => "'[]'" })
-  filters: ProviderFilter[];
-
-  @Column({ type: 'jsonb', default: () => "'[]'" })
-  advance_filters: ProviderFilter[];
-
-  @Column({ type: 'boolean', default: false })
-  is_advance_filters: boolean;
-
   @Column({ type: 'jsonb', nullable: true })
   credentials: ProviderCredential | null;
 
