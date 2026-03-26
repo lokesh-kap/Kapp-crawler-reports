@@ -25,6 +25,10 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Project Docs
+
+- Backend architecture overview: `README.backend-overview.md`
+
 ## Project setup
 
 ```bash

@@ -10,6 +10,10 @@ export class FilterDto {
   name: string;
 
   @IsOptional()
+  @IsString()
+  value_to_apply?: string;
+
+  @IsOptional()
   @IsInt()
   delay?: number;
 
@@ -46,6 +50,10 @@ export class CredentialDto {
   @IsOptional()
   @IsString()
   password_xpath?: string;
+
+  @IsOptional()
+  @IsString()
+  login_submit_xpath?: string;
 
   @IsOptional()
   @IsInt()

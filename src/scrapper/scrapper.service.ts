@@ -1,3 +1,783 @@
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ClientWiseEntity } from '../client-wise/entities/client-wise.entity';
+import { ClientWiseLeadsConfigEntity } from '../client-wise/entities/client-wise-leads-config.entity';
+import { ClientWiseSummaryConfigEntity } from '../client-wise/entities/client-wise-summary-config.entity';
+import { ClientWiseLeadsDataEntity } from './entities/client-wise-leads-data.entity';
+import { ClientWiseSummaryDataEntity } from './entities/client-wise-summary-data.entity';
+import { ScrapingDataService, type ScrapeFieldConfig, type ScrapeListOptions, type ScrapeSchema, type ScrapeFieldConfig as ScrapeField } from './scraping-data.service';
+import { FormFillerService, type FormFieldConfig, type FormFieldType } from './form-filler.service';
+import { HandlePaginationService, type PaginationOptions } from './handle-pagination.service';
+import { PlaywrightService } from './playwright.service';
+import type { Page } from 'playwright';
+import type { ScrapeTargetDto } from './dto/scrape-target.dto';
+import { ClientWiseLeadsConfigEntity as LeadsCfg } from '../client-wise/entities/client-wise-leads-config.entity';
+import { ClientWiseSummaryConfigEntity as SummaryCfg } from '../client-wise/entities/client-wise-summary-config.entity';
+import { ClientWiseStepEntity } from '../client-wise/entities/client-wise-step.entity';
+
+type TargetKind = 'leads' | 'summary';
+type StepGroup = 'normal' | 'advanced' | 'extra';
+
+@Injectable()
 export class ScrapperService {
-    constructor() {}
+  private readonly logger = new Logger(ScrapperService.name);
+
+  constructor(
+    @InjectRepository(ClientWiseEntity)
+    private readonly clientWiseRepository: Repository<ClientWiseEntity>,
+    @InjectRepository(ClientWiseLeadsConfigEntity)
+    private readonly leadsConfigRepository: Repository<ClientWiseLeadsConfigEntity>,
+    @InjectRepository(ClientWiseSummaryConfigEntity)
+    private readonly summaryConfigRepository: Repository<ClientWiseSummaryConfigEntity>,
+    @InjectRepository(ClientWiseLeadsDataEntity)
+    private readonly leadsDataRepository: Repository<ClientWiseLeadsDataEntity>,
+    @InjectRepository(ClientWiseSummaryDataEntity)
+    private readonly summaryDataRepository: Repository<ClientWiseSummaryDataEntity>,
+    @InjectRepository(ClientWiseStepEntity)
+    private readonly stepRepository: Repository<ClientWiseStepEntity>,
+    private readonly playwrightService: PlaywrightService,
+    private readonly formFillerService: FormFillerService,
+    private readonly scrapingDataService: ScrapingDataService,
+    private readonly paginationService: HandlePaginationService,
+  ) {}
+
+  async scrapeLeads(dto: ScrapeTargetDto) {
+    return this.scrapeTarget(dto, 'leads');
+  }
+
+  async scrapeSummary(dto: ScrapeTargetDto) {
+    return this.scrapeTarget(dto, 'summary');
+  }
+
+  private normalizeKey(key: string): string {
+    return key
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  private mapSelectorTypeToFormFieldType(selectorType: string | undefined): FormFieldType {
+    switch ((selectorType ?? '').toLowerCase()) {
+      case 'text':
+        return 'text';
+      case 'select':
+        return 'select';
+      case 'searchable_dropdown':
+        return 'select';
+      case 'button':
+        return 'click';
+      case 'search':
+        // Treat "search" as a text input (user provides value_to_apply),
+        // and use a separate "button"/"click" filter item to submit the search.
+        return 'text';
+      case 'checkbox':
+        return 'checkbox';
+      case 'click':
+        return 'click';
+      case 'radio':
+        return 'radio';
+      case 'file':
+        return 'file';
+      default:
+        return 'text';
+    }
+  }
+
+  private mapSelectorTypeToScrapeSource(selectorType: string | undefined): 'text' | 'html' | 'value' | 'attr' {
+    const t = (selectorType ?? '').toLowerCase();
+    if (t === 'select' || t === 'searchable_dropdown') return 'value';
+    return 'text';
+  }
+
+  private buildPaginationOptions(dto: ScrapeTargetDto): PaginationOptions {
+    throw new Error('buildPaginationOptions(dto) is no longer used');
+  }
+
+  private buildSchemaFromConfig(items: Array<{ name?: string; xpath?: string; selector_type?: string }>): ScrapeSchema {
+    const schema: ScrapeSchema = {};
+    for (const item of items) {
+      const key = item.name?.trim();
+      const xpath = item.xpath?.trim();
+      if (!key || !xpath) continue;
+      schema[key] = {
+        xpath,
+        source: this.mapSelectorTypeToScrapeSource(item.selector_type),
+        trim: true,
+        required: false,
+      };
+    }
+    return schema;
+  }
+
+  private async navigateWithRetry(page: Page, url: string, maxRetries: number, waitForXPaths: string[]) {
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+      try {
+        this.logger.log(`Navigation attempt ${attempt}/${maxRetries} => ${url}`);
+        // Use "commit" like PunchService: more reliable when DOM/load events are flaky via proxy.
+        await page.goto(url, { waitUntil: 'commit', timeout: 45000 });
+
+        // Proxy: DOM might not become ready; wait for the key elements.
+        for (const xpath of waitForXPaths) {
+          if (!xpath) continue;
+          await page.locator(`xpath=${xpath}`).first().waitFor({ state: 'visible', timeout: 15000 });
+        }
+
+        return;
+      } catch (err) {
+        lastErr = err;
+        this.logger.warn(`Navigation failed (attempt ${attempt})`, err instanceof Error ? err.stack : undefined);
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error('Navigation failed');
+  }
+
+  private buildPaginationOptionsFromComputed(dto: ScrapeTargetDto, nextButtonXpath: string): PaginationOptions {
+    return {
+      nextButtonXpath,
+      disabledAttribute: dto.disabled_attribute ?? 'disabled',
+      // "Full pagination" behavior by default:
+      // - stop when Next is disabled/not found (HandlePaginationService)
+      // - very high safety cap to prevent infinite loops on buggy UIs
+      maxPages: dto.max_pages ?? this.getEnvInt('SCRAPER_MAX_PAGES', 10000),
+      delayMsBetweenPages: dto.delay_ms_between_pages ?? this.getEnvInt('SCRAPER_DELAY_MS_BETWEEN_PAGES', 0),
+      stopWhenNextDisabled: dto.stop_when_next_disabled ?? this.getEnvBool('SCRAPER_STOP_WHEN_NEXT_DISABLED', true),
+    };
+  }
+
+  private getEnvBool(name: string, defaultValue: boolean): boolean {
+    const raw = (process.env[name] ?? '').trim().toLowerCase();
+    if (!raw) return defaultValue;
+    if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
+    if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
+    return defaultValue;
+  }
+
+  private getEnvInt(name: string, defaultValue: number): number {
+    const raw = (process.env[name] ?? '').trim();
+    if (!raw) return defaultValue;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : defaultValue;
+  }
+
+  private computeNextButtonXpath(dto: ScrapeTargetDto): string {
+    if (dto.next_button_xpath && dto.next_button_xpath.trim().length > 0) {
+      return dto.next_button_xpath.trim();
+    }
+
+    // Default heuristic: common "Next" anchors/buttons + typical next CSS class.
+    // Note: This is an XPath union, so it must evaluate to a node-set.
+    return `
+      //a[normalize-space(.)='Next' or @aria-label='Next' or @rel='next']
+      | //button[normalize-space(.)='Next' or @aria-label='Next']
+      | //*[contains(translate(@class,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'next')
+           and not(contains(translate(@class,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'disabled'))
+        ]
+    `.trim().replace(/\s+/g, ' ');
+  }
+
+  private deriveRootXpathFromFieldXpath(fieldXpath: string): string | undefined {
+    const s = (fieldXpath ?? '').trim();
+    if (!s) return undefined;
+
+    // Try to derive a "row root" xpath by cutting to the last "/" outside of any predicates.
+    let bracketDepth = 0;
+    for (let i = s.length - 1; i >= 0; i -= 1) {
+      const ch = s[i];
+      if (ch === ']') bracketDepth += 1;
+      if (ch === '[') bracketDepth = Math.max(0, bracketDepth - 1);
+
+      if (bracketDepth === 0 && ch === '/') {
+        const root = s.substring(0, i).replace(/\/+$/g, '').trim();
+        if (root.length > 0) return root;
+      }
+    }
+
+    // Fallback: if we can't cut, just use the original field xpath.
+    return s;
+  }
+
+  private computeItemXpath(dto: ScrapeTargetDto, targetConfig: LeadsCfg | SummaryCfg): string {
+    if (dto.item_xpath && dto.item_xpath.trim().length > 0) return dto.item_xpath.trim();
+
+    // Heuristic: derive item/root xpath from the first field xpath.
+    const preferred = (targetConfig.filters ?? [])?.find((x) => x?.xpath?.trim?.());
+
+    const firstXpath = preferred?.xpath?.trim?.();
+    if (!firstXpath) {
+      throw new BadRequestException(
+        `Cannot derive item_xpath: target config has no filter/advance_filter xpaths`,
+      );
+    }
+
+    const derived = this.deriveRootXpathFromFieldXpath(firstXpath);
+    if (!derived) {
+      throw new BadRequestException(`Cannot derive item_xpath from xpath: ${firstXpath}`);
+    }
+
+    return derived;
+  }
+
+  private async openAdvancedFiltersIfNeeded(page: Page, dto: ScrapeTargetDto, targetConfig: LeadsCfg | SummaryCfg) {
+    if (!targetConfig.is_advance_filters) return;
+
+    this.logger.log('Advanced filters enabled; attempting to open advanced filter UI...');
+
+    const advToggleXpath =
+      dto.advanced_filters_toggle_xpath && dto.advanced_filters_toggle_xpath.trim().length > 0
+        ? dto.advanced_filters_toggle_xpath.trim()
+        : `
+            //button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'advanced')]
+            | //a[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'advanced')]
+            | //*[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'advanced filters')]
+          `.trim().replace(/\s+/g, ' ');
+
+    try {
+      await page.locator(`xpath=${advToggleXpath}`).first().click({ timeout: 7000 });
+      this.logger.log('Advanced filter toggle clicked.');
+    } catch (err) {
+      this.logger.warn(
+        'Could not click advanced filter toggle using heuristic; continuing to attempt to fill advanced filters.',
+        err instanceof Error ? err.stack : undefined,
+      );
+    }
+
+    // We don't have advance_filters array anymore; advanced actions live in steps.
+  }
+
+  private async login(page: Page, dto: ScrapeTargetDto, clientWise: ClientWiseEntity) {
+    const creds = clientWise.credentials;
+    if (!creds) throw new BadRequestException('Client wise credentials are missing');
+    if (!creds.login_url) throw new BadRequestException('login_url is required in client wise credentials');
+    if (!creds.login_xpath || !creds.password_xpath) {
+      throw new BadRequestException('login_xpath and password_xpath are required in client wise credentials');
+    }
+    const maxRetries = dto.max_retries ?? 3;
+
+    await this.navigateWithRetry(page, creds.login_url, maxRetries, [creds.login_xpath, creds.password_xpath]);
+    this.logger.log(`After login page navigation: url=${page.url()}`);
+
+    // Fill login + password.
+    const loginField: FormFieldConfig = {
+      xpath: creds.login_xpath,
+      type: this.mapSelectorTypeToFormFieldType(creds.login_selector_type),
+      value: creds.login,
+    };
+    const passwordField: FormFieldConfig = {
+      xpath: creds.password_xpath,
+      type: this.mapSelectorTypeToFormFieldType(creds.password_selector_type),
+      value: creds.password,
+    };
+
+    await this.formFillerService.fillForm(page, [loginField], { stopOnError: true });
+    if (typeof creds.delay === 'number' && creds.delay > 0) {
+      await page.waitForTimeout(creds.delay);
+    }
+    await this.formFillerService.fillForm(page, [passwordField], { stopOnError: true });
+
+    // Submit login: try common submit patterns, fallback to Enter key.
+    this.logger.log('Submitting login...');
+    try {
+      // 1) Preferred: click configured submit xpath.
+      const submitXpath = (creds as any)?.login_submit_xpath?.trim?.();
+      if (submitXpath) {
+        await page.locator(`xpath=${submitXpath}`).first().click({ timeout: 8000 });
+      } else {
+        // 2) Heuristic: common submit button.
+        await page.locator(`xpath=//button[@type="submit"]`).first().click({ timeout: 5000 });
+      }
+    } catch {
+      try {
+        await page.keyboard.press('Enter');
+      } catch (err) {
+        // ignore
+        this.logger.warn('Unable to press Enter after login fill');
+      }
+    }
+
+    // Wait for login to actually establish session/redirect.
+    await Promise.race([
+      page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null),
+      page.waitForLoadState('domcontentloaded', { timeout: 45000 }).catch(() => null),
+    ]);
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
+    // Some portals set auth/session tokens asynchronously after redirect.
+    // Keep a hard buffer so next navigation can reuse the established session.
+    await page.waitForTimeout(10000);
+    this.logger.log(`After login submit: url=${page.url()}`);
+
+    // Log quick session signals to help debug sites that require session carry-over.
+    const [cookies, storageSignals] = await Promise.all([
+      page.context().cookies().catch(() => []),
+      page
+        .evaluate(() => ({
+          localStorageKeys: window.localStorage?.length ?? 0,
+          sessionStorageKeys: window.sessionStorage?.length ?? 0,
+        }))
+        .catch(() => ({ localStorageKeys: 0, sessionStorageKeys: 0 })),
+    ]);
+    this.logger.log(
+      `Post-login session check: cookies=${cookies.length}, localStorageKeys=${storageSignals.localStorageKeys}, ` +
+        `sessionStorageKeys=${storageSignals.sessionStorageKeys}`,
+    );
+
+    // If we're still on a login-like page, log a warning (often means submit xpath wrong or login failed).
+    const u = (page.url() || '').toLowerCase();
+    if (u.includes('login') || u.includes('signin') || u.includes('sign-in')) {
+      this.logger.warn(`Login may not have completed (still on url=${page.url()}).`);
+    }
+  }
+
+  private async applyFilters(page: Page, items: Array<any>) {
+    this.logger.log(`Applying filters: total_items=${items.length}`);
+    let appliedCount = 0;
+    let didTriggerSearchOrClick = false;
+    const interFilterDelayMs = this.getEnvInt('SCRAPER_DELAY_MS_BETWEEN_FILTERS', 1200);
+
+    for (let idx = 0; idx < items.length; idx += 1) {
+      const item = items[idx];
+      const xpath = item?.xpath?.trim?.();
+      if (!xpath) {
+        this.logger.warn(`Filter[${idx + 1}/${items.length}] skipped: empty xpath`);
+        continue;
+      }
+
+      const selectorType: string | undefined = item?.selector_type;
+      const formType = this.mapSelectorTypeToFormFieldType(selectorType);
+
+      const valueToApply: string | undefined = item?.value_to_apply;
+      const effectiveValueToApply =
+        formType === 'checkbox' && (valueToApply === undefined || valueToApply === null || String(valueToApply).trim().length === 0)
+          ? 'true'
+          : valueToApply;
+      const shouldApply =
+        formType === 'click' || formType === 'radio'
+          ? true
+          : formType === 'checkbox'
+            ? true
+            : formType === 'select' && (selectorType ?? '').toLowerCase() === 'searchable_dropdown'
+              // Allow searchable dropdown "open/select panel" actions even when value is empty.
+              ? true
+            : valueToApply !== undefined &&
+              valueToApply !== null &&
+              String(valueToApply).trim().length > 0;
+
+      if (!shouldApply) {
+        this.logger.warn(
+          `Filter[${idx + 1}/${items.length}] skipped: shouldApply=false ` +
+            `(selector_type=${selectorType ?? ''}, formType=${formType}, value_to_apply=${valueToApply ?? ''})`,
+        );
+        continue;
+      }
+
+      const matchCount = await page.locator(`xpath=${xpath}`).count().catch(() => 0);
+
+      this.logger.log(
+        `Filter[${idx + 1}/${items.length}] apply: selector_type=${selectorType ?? ''} formType=${formType} name=${item?.name ?? ''} ` +
+          `value_to_apply=${effectiveValueToApply ?? ''} match_count=${matchCount} xpath=${xpath}`,
+      );
+
+      const field: FormFieldConfig = {
+        xpath,
+        type: formType,
+        value: effectiveValueToApply,
+        optional: true,
+        timeoutMs: 30000,
+      };
+
+      // DOM often changes after login; retry a bit if element isn't ready yet.
+      let lastErr: unknown;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          const waitReady = await this.waitForLocatorToReappear(page, xpath, 12000);
+          this.logger.log(
+            `Filter[${idx + 1}/${items.length}] pre-attempt ${attempt}/3 locator_ready=${waitReady}`,
+          );
+          await this.formFillerService.fillForm(page, [field], { stopOnError: true });
+          // Advanced/custom dropdown UIs often re-render after each click/select.
+          // Wait a short beat for DOM stabilization so next step uses fresh nodes.
+          await page.waitForTimeout(250);
+          lastErr = null;
+          break;
+        } catch (err) {
+          lastErr = err;
+          this.logger.warn(
+            `Filter[${idx + 1}/${items.length}] apply failed (attempt ${attempt}/3) name=${item?.name ?? ''} xpath=${xpath}`,
+            err instanceof Error ? err.stack : undefined,
+          );
+          await page.waitForTimeout(1500);
+        }
+      }
+      if (lastErr) {
+        this.logger.warn(`Filter[${idx + 1}/${items.length}] giving up (name=${item?.name ?? ''})`);
+      }
+
+      const itemDelay = typeof item?.delay === 'number' ? item.delay : 0;
+      const effectiveDelay = Math.max(itemDelay, interFilterDelayMs);
+      if (effectiveDelay > 0) {
+        this.logger.log(
+          `Filter settle wait: ${effectiveDelay}ms (item_delay=${itemDelay}ms, global_delay=${interFilterDelayMs}ms)`,
+        );
+        await page.waitForTimeout(effectiveDelay);
+      }
+
+      if (formType === 'click' || formType === 'radio') {
+        didTriggerSearchOrClick = true;
+      }
+      appliedCount += 1;
+    }
+
+    this.logger.log(`Filters applied: count=${appliedCount}`);
+    if (didTriggerSearchOrClick) {
+      this.logger.log('Search/click filter detected; waiting for results to load...');
+      await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => null);
+      await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
+    }
+  }
+
+  private async waitForLocatorToReappear(page: Page, xpath: string, timeoutMs = 12000): Promise<boolean> {
+    const start = Date.now();
+    let attempt = 0;
+    while (Date.now() - start < timeoutMs) {
+      attempt += 1;
+      const count = await page.locator(`xpath=${xpath}`).count().catch(() => 0);
+      this.logger.log(`Locator readiness check attempt=${attempt} count=${count} xpath=${xpath}`);
+      if (count > 0) return true;
+      await page.waitForTimeout(400);
+    }
+    this.logger.warn(`Locator did not reappear in ${timeoutMs}ms xpath=${xpath}`);
+    return false;
+  }
+
+  private async executeStepGroup(
+    page: Page,
+    clientWiseId: number,
+    target: TargetKind,
+    group: StepGroup,
+  ) {
+    const steps = await this.stepRepository.find({
+      where: {
+        client_wise_id: clientWiseId,
+        config_type: target,
+        step_group: group,
+        is_active: true,
+      },
+      order: { sequence: 'ASC', id: 'ASC' },
+    });
+    if (!steps.length) return;
+
+    this.logger.log(`Executing step group "${group}" with ${steps.length} step(s)`);
+    for (let i = 0; i < steps.length; i += 1) {
+      const s = steps[i];
+      this.logger.log(
+        `Step[${i + 1}/${steps.length}] group=${group} id=${s.id} sequence=${s.sequence} type=${s.step_type} ` +
+          `name=${s.name ?? ''} xpath=${s.xpath}`,
+      );
+    }
+    const mapped = steps.map((s) => {
+      const meta = (s.meta_data ?? {}) as Record<string, unknown>;
+      const stepType = (s.step_type ?? '').toLowerCase();
+      const value = meta['value_to_apply'] as string | boolean | undefined;
+      // IMPORTANT: step_type is the source of truth for execution behavior.
+      // meta_data.selector_type may be stale ("click") from earlier UI defaults.
+      const selectorType = String(stepType || meta['selector_type'] || 'click');
+      const delay = Number(meta['delay_ms'] ?? 0);
+      return {
+        xpath: s.xpath,
+        name: s.name ?? '',
+        selector_type: selectorType,
+        value_to_apply: value,
+        delay: Number.isFinite(delay) ? delay : 0,
+      };
+    });
+    await this.applyFilters(page, mapped);
+  }
+
+  private async waitForResults(page: Page, itemXpath: string): Promise<void> {
+    // After clicking Search, results might take time to render via XHR.
+    // Wait until at least one row exists.
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      const count = await page.locator(`xpath=${itemXpath}`).count().catch(() => 0);
+      this.logger.log(`Results wait: attempt ${attempt}/5 item_count=${count}`);
+      if (count > 0) return;
+      await page.waitForTimeout(2000);
+    }
+    throw new BadRequestException(
+      `No results rendered after applying filters. Check/override item_xpath (current: ${itemXpath}).`,
+    );
+  }
+
+  private async waitBetweenStepPhases(page: Page, label: string): Promise<void> {
+    const delayMs = this.getEnvInt('SCRAPER_DELAY_MS_BETWEEN_STEP_GROUPS', 2000);
+    this.logger.log(`Phase settle (${label}): waiting ${delayMs}ms for DOM stabilization`);
+    if (delayMs > 0) {
+      await page.waitForTimeout(delayMs);
+    }
+    await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => null);
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+  }
+
+  private mapLeadOrSummaryRowToEntity(
+    target: TargetKind,
+    row: Record<string, unknown>,
+    meta: { client_id: number; year: number; user_id: number; config_id: number },
+  ): ClientWiseLeadsDataEntity | ClientWiseSummaryDataEntity {
+    const normalized: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(row)) {
+      normalized[this.normalizeKey(k)] = v;
+    }
+
+    if (target === 'leads') {
+      const e = new ClientWiseLeadsDataEntity();
+      e.client_id = meta.client_id;
+      e.year = meta.year;
+      e.user_id = meta.user_id;
+      e.config_id = meta.config_id;
+      e.raw_data = row;
+
+      e.name = (normalized['name'] ?? null) as string;
+      e.email = (normalized['email'] ?? null) as string;
+      e.mobile = (normalized['mobile'] ?? null) as string;
+      e.lead_origin = (normalized['lead_origin'] ?? null) as string;
+      e.country = (normalized['country'] ?? null) as string;
+      e.state = (normalized['state'] ?? null) as string;
+      e.city = (normalized['city'] ?? null) as string;
+      e.instance = (normalized['instance'] ?? null) as string;
+      e.instance_date = (normalized['instance_date'] ?? null) as string;
+      e.campaign = (normalized['campaign'] ?? null) as string;
+      e.lead_stage = (normalized['lead_stage'] ?? null) as string;
+      e.lead_status = (normalized['lead_status'] ?? null) as string;
+      e.email_verification_status = (normalized['email_verification_status'] ?? null) as string;
+      e.mobile_verification_status = (normalized['mobile_verification_status'] ?? null) as string;
+      e.lead_score = (normalized['lead_score'] ?? null) as string;
+      e.registration_device = (normalized['registration_device'] ?? null) as string;
+      e.course_specialization = (normalized['course_specialization'] ?? null) as string;
+      e.campus = (normalized['campus'] ?? null) as string;
+      e.last_lead_activity_date = (normalized['last_lead_activity_date'] ?? null) as string;
+      e.form_initiated = (normalized['form_initiated'] ?? null) as string;
+      e.paid_applications = (normalized['paid_applications'] ?? null) as string;
+      e.submitted_applications = (normalized['submitted_applications'] ?? null) as string;
+      e.enrolment_status = (normalized['enrolment_status'] ?? null) as string;
+      e.qualification_level = (normalized['qualification_level'] ?? null) as string;
+      e.program = (normalized['program'] ?? null) as string;
+      e.degree = (normalized['degree'] ?? null) as string;
+      e.discipline = (normalized['discipline'] ?? null) as string;
+
+      return e;
+    }
+
+    const e = new ClientWiseSummaryDataEntity();
+    e.client_id = meta.client_id;
+    e.year = meta.year;
+    e.user_id = meta.user_id;
+    e.config_id = meta.config_id;
+    e.raw_data = row;
+
+    e.source = (normalized['source'] ?? null) as string;
+    e.medium = (normalized['medium'] ?? null) as string;
+    e.campaign_name = (normalized['campaign_name'] ?? null) as string;
+    e.primary_leads = (normalized['primary_leads'] ?? null) as string;
+    e.secondary_leads = (normalized['secondary_leads'] ?? null) as string;
+    e.tertiary_leads = (normalized['tertiary_leads'] ?? null) as string;
+    e.total_instances = (normalized['total_instances'] ?? null) as string;
+    e.verified_leads = (normalized['verified_leads'] ?? null) as string;
+    e.unverified_leads = (normalized['unverified_leads'] ?? null) as string;
+    e.form_initiated = (normalized['form_initiated'] ?? null) as string;
+    e.payment_approved = (normalized['payment_approved'] ?? null) as string;
+    e.enrolments = (normalized['enrolments'] ?? null) as string;
+
+    return e;
+  }
+
+  private async scrapeTarget(dto: ScrapeTargetDto, target: TargetKind) {
+    this.logger.log(
+      `Scrape request received: target=${target}, client_wise_id=${dto.client_wise_id ?? 'n/a'}, ` +
+        `client_id=${dto.client_id ?? 'n/a'}, year=${dto.year ?? 'n/a'}, config_id=${dto.config_id ?? 'n/a'}`,
+    );
+
+    const resolvedUseProxy = dto.use_proxy ?? this.getEnvBool('SCRAPER_USE_PROXY', false);
+    const resolvedMaxRetries = dto.max_retries ?? this.getEnvInt('SCRAPER_MAX_RETRIES', 3);
+
+    let clientWise: ClientWiseEntity | null = null;
+    if (dto.client_wise_id) {
+      clientWise = await this.clientWiseRepository.findOne({ where: { id: dto.client_wise_id } });
+    } else {
+      if (!dto.client_id || !dto.year) {
+        throw new BadRequestException('Provide client_wise_id OR (client_id and year).');
+      }
+
+      // If config_id is not provided (testing), pick the latest client_wise row for this client/year.
+      if (dto.config_id) {
+        clientWise = await this.clientWiseRepository.findOne({
+          where: { client_id: dto.client_id, year: dto.year, config_id: dto.config_id },
+        });
+      } else {
+        clientWise = await this.clientWiseRepository.findOne({
+          where: { client_id: dto.client_id, year: dto.year },
+          order: { id: 'DESC' },
+        });
+      }
+    }
+
+    if (!clientWise) {
+      throw new NotFoundException(
+        dto.client_wise_id
+          ? `client_wise row not found for id=${dto.client_wise_id}`
+          : `client_wise row not found for client_id=${dto.client_id}, year=${dto.year}, config_id=${dto.config_id ?? 'latest'}`,
+      );
+    }
+
+    this.logger.log(
+      `Using client_wise row: id=${clientWise.id}, client_id=${clientWise.client_id}, year=${clientWise.year}, ` +
+        `user_id=${clientWise.user_id}, config_id=${clientWise.config_id}`,
+    );
+
+    if (clientWise.config_id === null || clientWise.config_id === undefined) {
+      throw new BadRequestException(`client_wise.config_id is missing for client_wise_id=${clientWise.id}`);
+    }
+    const resolvedConfigId = clientWise.config_id;
+
+    const targetConfig =
+      target === 'leads'
+        ? await this.leadsConfigRepository.findOne({
+            where: { client_wise_id: clientWise.id },
+          })
+        : await this.summaryConfigRepository.findOne({
+            where: { client_wise_id: clientWise.id },
+          });
+
+    if (!targetConfig) {
+      throw new NotFoundException(
+        `${target} config not found for client_wise_id=${clientWise.id}`,
+      );
+    }
+
+    this.logger.log(
+      `Found ${target} config: url=${(targetConfig as any).url}, filters=${(targetConfig as any).filters?.length ?? 0}, ` +
+        `is_advance_filters=${(targetConfig as any).is_advance_filters}, has_extra_steps=${(targetConfig as any).has_extra_steps}`,
+    );
+
+    const browser = await this.playwrightService.createBrowser({
+      useProxy: resolvedUseProxy,
+    });
+
+    const page = browser.page;
+    try {
+      // 1) Always login first
+      await this.login(page, dto, clientWise);
+
+      const itemXpath = this.computeItemXpath(dto, targetConfig);
+      const nextButtonXpath = this.computeNextButtonXpath(dto);
+      const paginationOptions = this.buildPaginationOptionsFromComputed(dto, nextButtonXpath);
+
+      this.logger.log(`Derived item_xpath=${itemXpath}`);
+      this.logger.log(`Using next_button_xpath=${nextButtonXpath}`);
+
+      // 2) Navigate to target page with retries
+      // Don't use itemXpath as a navigation-ready marker, because rows usually render only AFTER filters/search.
+      // Use a stable marker that exists on almost every page.
+      await this.navigateWithRetry(page, (targetConfig as any).url, resolvedMaxRetries, ['//body']);
+      this.logger.log(`After target navigation (${target}): url=${page.url()}`);
+
+      // 3) If advanced filters are enabled, open the advanced UI before filling.
+      // 3) Step executor flow (preferred). Fallback to existing filter arrays for backward compatibility.
+      const stepCount = await this.stepRepository.count({
+        where: { client_wise_id: clientWise.id, config_type: target, is_active: true },
+      });
+
+      // Always apply base filters JSON first.
+      const normalItems = [...(targetConfig.filters ?? [])];
+      await this.applyFilters(page, normalItems);
+      await this.waitBetweenStepPhases(page, 'after base filters');
+
+      // Then advanced phase.
+      if ((targetConfig as any).is_advance_filters) {
+        await this.openAdvancedFiltersIfNeeded(page, dto, targetConfig);
+        if (stepCount > 0) {
+          await this.executeStepGroup(page, clientWise.id, target, 'advanced');
+          await this.waitBetweenStepPhases(page, 'after advanced steps');
+        }
+      }
+
+      // Then normal step group (if configured).
+      if (stepCount > 0) {
+        await this.executeStepGroup(page, clientWise.id, target, 'normal');
+        await this.waitBetweenStepPhases(page, 'after normal steps');
+      }
+
+      // Then extra step group (if enabled and configured).
+      if (stepCount > 0 && (targetConfig as any).has_extra_steps) {
+        await this.executeStepGroup(page, clientWise.id, target, 'extra');
+        await this.waitBetweenStepPhases(page, 'after extra steps');
+      }
+      await this.waitForResults(page, itemXpath);
+
+      // 5) Build schema for list extraction using config items
+      const schemaItems = [...(targetConfig.filters ?? [])];
+      this.logger.log(`Building scraping schema from schema_items=${schemaItems.length}`);
+      const schema = this.buildSchemaFromConfig(schemaItems);
+      const listOptions: ScrapeListOptions = {
+        itemXpath,
+      };
+
+      // 6) Paginate + scrape + save per page (streaming) to avoid huge memory/DB writes.
+      let totalRows = 0;
+      let totalSaved = 0;
+
+      const perPageCounts = await this.paginationService.paginate<number>(
+        page,
+        paginationOptions,
+        async (page, pageNumber) => {
+          this.logger.log(`Scrape page ${pageNumber}: waiting for rows...`);
+          await page
+            .locator(`xpath=${itemXpath}`)
+            .first()
+            .waitFor({ state: 'attached', timeout: 30000 })
+            .catch(() => null);
+
+          const rows = await this.scrapingDataService.scrapeList(page, schema, listOptions);
+          totalRows += rows.length;
+
+          const entities = rows.map((row) =>
+            this.mapLeadOrSummaryRowToEntity(target, row, {
+              client_id: clientWise.client_id,
+              year: clientWise.year,
+              user_id: clientWise.user_id,
+              config_id: resolvedConfigId,
+            }),
+          );
+
+          if (entities.length > 0) {
+            if (target === 'leads') {
+              await this.leadsDataRepository.save(entities as ClientWiseLeadsDataEntity[]);
+            } else {
+              await this.summaryDataRepository.save(entities as ClientWiseSummaryDataEntity[]);
+            }
+            totalSaved += entities.length;
+          }
+
+          this.logger.log(`Scrape page ${pageNumber}: rows=${rows.length} saved=${entities.length}`);
+          return rows.length;
+        },
+      );
+
+      const pagesScraped = perPageCounts.length;
+      this.logger.log(
+        `Scraping finished: pages=${pagesScraped} total_rows=${totalRows} total_saved=${totalSaved}`,
+      );
+
+      return {
+        pages: pagesScraped,
+        saved: totalSaved,
+        total_scraped: totalRows,
+      };
+    } catch (err) {
+      this.logger.error(`Scrape ${target} failed`, err instanceof Error ? err.stack : undefined);
+      throw err;
+    } finally {
+      await browser.browser.close().catch(() => null);
+    }
+  }
 }

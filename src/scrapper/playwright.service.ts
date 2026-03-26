@@ -47,10 +47,13 @@ export class PlaywrightService {
 
     const page = await context.newPage();
 
-    if (options.blockResources ?? true) {
+    const blockResources = options.blockResources ?? this.getBlockResourcesFromEnv();
+    if (blockResources) {
       await page.route('**/*', (route) => {
         const type = route.request().resourceType();
-        if (['image', 'stylesheet', 'font'].includes(type)) {
+        // Do NOT block stylesheets by default (pages render incorrectly otherwise).
+        // Images + fonts are safe to block for speed in most cases.
+        if (['image', 'font'].includes(type)) {
           route.abort();
         } else {
           route.continue();
@@ -81,11 +84,19 @@ export class PlaywrightService {
     return this.parseBoolean(process.env.BROWSER_HEADLESS, true);
   }
 
+  private getBlockResourcesFromEnv(): boolean {
+    // If true, block heavy resources (images/fonts). Default true.
+    return this.parseBoolean(process.env.SCRAPER_BLOCK_RESOURCES, true);
+  }
+
   private parseBoolean(value: string | undefined, defaultValue: boolean): boolean {
     if (value === undefined) {
       return defaultValue;
     }
-    return value.toLowerCase() === 'true';
+    const v = value.toLowerCase().trim();
+    if (['true', '1', 'yes', 'on'].includes(v)) return true;
+    if (['false', '0', 'no', 'off'].includes(v)) return false;
+    return defaultValue;
   }
 
   private getRandomUserAgent(): string {

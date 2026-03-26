@@ -39,6 +39,10 @@ class ProviderCredentialDto {
   password_xpath?: string;
 
   @IsOptional()
+  @IsString()
+  login_submit_xpath?: string;
+
+  @IsOptional()
   @IsInt()
   delay?: number;
 }

@@ -9,6 +9,7 @@ import { ProviderConfigEntity } from '../provider-config/entitites/provider-conf
 import { ClientWiseLeadsConfigEntity } from './entities/client-wise-leads-config.entity';
 import { ClientWiseSummaryConfigEntity } from './entities/client-wise-summary-config.entity';
 import { UpsertClientWiseScraperConfigDto } from './dto/upsert-client-wise-scraper-config.dto';
+import { ClientWiseStepEntity, StepConfigType, StepGroupType } from './entities/client-wise-step.entity';
 
 @Injectable()
 export class ClientWiseService {
@@ -21,6 +22,8 @@ export class ClientWiseService {
     private readonly clientWiseLeadsConfigRepository: Repository<ClientWiseLeadsConfigEntity>,
     @InjectRepository(ClientWiseSummaryConfigEntity)
     private readonly clientWiseSummaryConfigRepository: Repository<ClientWiseSummaryConfigEntity>,
+    @InjectRepository(ClientWiseStepEntity)
+    private readonly clientWiseStepRepository: Repository<ClientWiseStepEntity>,
   ) {}
 
   create(createClientWiseDto: CreateClientWiseDto) {
@@ -83,16 +86,70 @@ export class ClientWiseService {
     return row;
   }
 
-  getLeadsConfig(client_id: number, year: number, config_id: number) {
-    return this.clientWiseLeadsConfigRepository.findOne({
+  async getLeadsConfig(client_id: number, year: number, config_id: number) {
+    const config = await this.clientWiseLeadsConfigRepository.findOne({
       where: { client_id, year, config_id },
     });
+    if (!config) return null;
+    const steps = await this.getStepGroups(config.client_wise_id, 'leads');
+    return { ...config, ...steps };
   }
 
-  getSummaryConfig(client_id: number, year: number, config_id: number) {
-    return this.clientWiseSummaryConfigRepository.findOne({
+  async getSummaryConfig(client_id: number, year: number, config_id: number) {
+    const config = await this.clientWiseSummaryConfigRepository.findOne({
       where: { client_id, year, config_id },
     });
+    if (!config) return null;
+    const steps = await this.getStepGroups(config.client_wise_id, 'summary');
+    return { ...config, ...steps };
+  }
+
+  private async getStepGroups(clientWiseId: number, configType: StepConfigType) {
+    const rows = await this.clientWiseStepRepository.find({
+      where: { client_wise_id: clientWiseId, config_type: configType, is_active: true },
+      order: { sequence: 'ASC', id: 'ASC' },
+    });
+    return {
+      normal_steps: rows.filter((x) => x.step_group === 'normal'),
+      advanced_steps: rows.filter((x) => x.step_group === 'advanced'),
+      extra_steps: rows.filter((x) => x.step_group === 'extra'),
+    };
+  }
+
+  private async replaceStepGroup(
+    clientWiseId: number,
+    configType: StepConfigType,
+    stepGroup: StepGroupType,
+    steps: Array<{
+      step_type: string;
+      xpath: string;
+      name?: string;
+      sequence?: number;
+      meta_data?: Record<string, unknown>;
+      is_active?: boolean;
+    }> | undefined,
+  ) {
+    if (!steps) return;
+    await this.clientWiseStepRepository.delete({
+      client_wise_id: clientWiseId,
+      config_type: configType,
+      step_group: stepGroup,
+    });
+    if (!steps.length) return;
+    const toSave = steps.map((s, idx) =>
+      this.clientWiseStepRepository.create({
+        client_wise_id: clientWiseId,
+        config_type: configType,
+        step_group: stepGroup,
+        step_type: s.step_type as any,
+        xpath: s.xpath,
+        name: s.name ?? null,
+        sequence: s.sequence ?? idx,
+        meta_data: s.meta_data ?? {},
+        is_active: s.is_active ?? true,
+      }),
+    );
+    await this.clientWiseStepRepository.save(toSave);
   }
 
   async upsertLeadsConfig(payload: UpsertClientWiseScraperConfigDto) {
@@ -116,18 +173,27 @@ export class ClientWiseService {
       const merged = this.clientWiseLeadsConfigRepository.merge(existing, {
         ...payload,
         client_wise_id: commonConfig.id,
+        has_extra_steps: payload.has_extra_steps ?? existing.has_extra_steps ?? false,
       });
-      return this.clientWiseLeadsConfigRepository.save(merged);
+      const saved = await this.clientWiseLeadsConfigRepository.save(merged);
+      await this.replaceStepGroup(commonConfig.id, 'leads', 'normal', payload.normal_steps);
+      await this.replaceStepGroup(commonConfig.id, 'leads', 'advanced', payload.advanced_steps);
+      await this.replaceStepGroup(commonConfig.id, 'leads', 'extra', payload.extra_steps);
+      return saved;
     }
     const created = this.clientWiseLeadsConfigRepository.create({
       ...payload,
       client_wise_id: commonConfig.id,
       filters: payload.filters ?? [],
-      advance_filters: payload.advance_filters ?? [],
       is_advance_filters: payload.is_advance_filters ?? false,
+      has_extra_steps: payload.has_extra_steps ?? false,
       is_active: payload.is_active ?? true,
     });
-    return this.clientWiseLeadsConfigRepository.save(created);
+    const saved = await this.clientWiseLeadsConfigRepository.save(created);
+    await this.replaceStepGroup(commonConfig.id, 'leads', 'normal', payload.normal_steps);
+    await this.replaceStepGroup(commonConfig.id, 'leads', 'advanced', payload.advanced_steps);
+    await this.replaceStepGroup(commonConfig.id, 'leads', 'extra', payload.extra_steps);
+    return saved;
   }
 
   async upsertSummaryConfig(payload: UpsertClientWiseScraperConfigDto) {
@@ -151,18 +217,27 @@ export class ClientWiseService {
       const merged = this.clientWiseSummaryConfigRepository.merge(existing, {
         ...payload,
         client_wise_id: commonConfig.id,
+        has_extra_steps: payload.has_extra_steps ?? existing.has_extra_steps ?? false,
       });
-      return this.clientWiseSummaryConfigRepository.save(merged);
+      const saved = await this.clientWiseSummaryConfigRepository.save(merged);
+      await this.replaceStepGroup(commonConfig.id, 'summary', 'normal', payload.normal_steps);
+      await this.replaceStepGroup(commonConfig.id, 'summary', 'advanced', payload.advanced_steps);
+      await this.replaceStepGroup(commonConfig.id, 'summary', 'extra', payload.extra_steps);
+      return saved;
     }
     const created = this.clientWiseSummaryConfigRepository.create({
       ...payload,
       client_wise_id: commonConfig.id,
       filters: payload.filters ?? [],
-      advance_filters: payload.advance_filters ?? [],
       is_advance_filters: payload.is_advance_filters ?? false,
+      has_extra_steps: payload.has_extra_steps ?? false,
       is_active: payload.is_active ?? true,
     });
-    return this.clientWiseSummaryConfigRepository.save(created);
+    const saved = await this.clientWiseSummaryConfigRepository.save(created);
+    await this.replaceStepGroup(commonConfig.id, 'summary', 'normal', payload.normal_steps);
+    await this.replaceStepGroup(commonConfig.id, 'summary', 'advanced', payload.advanced_steps);
+    await this.replaceStepGroup(commonConfig.id, 'summary', 'extra', payload.extra_steps);
+    return saved;
   }
 
   async findOne(id: number) {

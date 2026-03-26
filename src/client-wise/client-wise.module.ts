@@ -6,6 +6,7 @@ import { ClientWiseEntity } from './entities/client-wise.entity';
 import { ProviderConfigEntity } from '../provider-config/entitites/provider-config.entity';
 import { ClientWiseLeadsConfigEntity } from './entities/client-wise-leads-config.entity';
 import { ClientWiseSummaryConfigEntity } from './entities/client-wise-summary-config.entity';
+import { ClientWiseStepEntity } from './entities/client-wise-step.entity';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { ClientWiseSummaryConfigEntity } from './entities/client-wise-summary-co
       ProviderConfigEntity,
       ClientWiseLeadsConfigEntity,
       ClientWiseSummaryConfigEntity,
+      ClientWiseStepEntity,
     ]),
   ],
   controllers: [ClientWiseController],

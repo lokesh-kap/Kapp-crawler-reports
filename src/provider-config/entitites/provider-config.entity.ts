@@ -9,6 +9,7 @@ import {
 export type ProviderFilter = {
   selector_type: string;
   name: string;
+  value_to_apply?: string;
   delay?: number;
   xpath?: string;
 };
@@ -21,12 +22,13 @@ export type ProviderCredential = {
   login_xpath?: string;
   password_selector_type?: string;
   password_xpath?: string;
+  login_submit_xpath?: string;
   delay?: number;
 };
 
 @Entity('provider_config')
 export class ProviderConfigEntity {
-  @PrimaryGeneratedColumn()
+  @PrimaryGeneratedColumn('increment')
   id: number;
 
   @CreateDateColumn({ type: 'timestamptz' })

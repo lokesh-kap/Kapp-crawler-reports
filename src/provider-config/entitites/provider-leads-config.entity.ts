@@ -11,7 +11,7 @@ import { ProviderConfigEntity, ProviderFilter } from './provider-config.entity';
 
 @Entity('provider_leads_config')
 export class ProviderLeadsConfigEntity {
-  @PrimaryGeneratedColumn()
+  @PrimaryGeneratedColumn('increment')
   id: number;
 
   @CreateDateColumn({ type: 'timestamptz' })
@@ -36,11 +36,11 @@ export class ProviderLeadsConfigEntity {
   @Column({ type: 'jsonb', default: () => "'[]'" })
   filters: ProviderFilter[];
 
-  @Column({ type: 'jsonb', default: () => "'[]'" })
-  advance_filters: ProviderFilter[];
-
   @Column({ type: 'boolean', default: false })
   is_advance_filters: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  has_extra_steps: boolean;
 
   @Column({ type: 'boolean', default: true })
   is_active: boolean;

@@ -12,7 +12,7 @@ import { ClientWiseEntity } from './client-wise.entity';
 
 @Entity('client_wise_summary_config')
 export class ClientWiseSummaryConfigEntity {
-  @PrimaryGeneratedColumn()
+  @PrimaryGeneratedColumn('increment')
   id: number;
 
   @CreateDateColumn({ type: 'timestamptz' })
@@ -46,11 +46,11 @@ export class ClientWiseSummaryConfigEntity {
   @Column({ type: 'jsonb', default: () => "'[]'" })
   filters: ProviderFilter[];
 
-  @Column({ type: 'jsonb', default: () => "'[]'" })
-  advance_filters: ProviderFilter[];
-
   @Column({ type: 'boolean', default: false })
   is_advance_filters: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  has_extra_steps: boolean;
 
   @Column({ type: 'boolean', default: true })
   is_active: boolean;

@@ -8,6 +8,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { FilterDto } from './filter.dto';
+import { StepItemDto } from './step.dto';
 
 export class UpsertClientWiseScraperConfigDto {
   @IsInt()
@@ -31,15 +32,31 @@ export class UpsertClientWiseScraperConfigDto {
   @IsOptional()
   filters?: FilterDto[];
 
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => FilterDto)
-  @IsOptional()
-  advance_filters?: FilterDto[];
-
   @IsOptional()
   @IsBoolean()
   is_advance_filters?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  has_extra_steps?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => StepItemDto)
+  normal_steps?: StepItemDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => StepItemDto)
+  advanced_steps?: StepItemDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => StepItemDto)
+  extra_steps?: StepItemDto[];
 
   @IsOptional()
   @IsBoolean()

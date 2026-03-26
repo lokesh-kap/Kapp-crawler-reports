@@ -5,6 +5,7 @@ import { ProviderConfigController } from './provider-config.controller';
 import { ProviderConfigEntity } from './entitites/provider-config.entity';
 import { ProviderLeadsConfigEntity } from './entitites/provider-leads-config.entity';
 import { ProviderSummaryConfigEntity } from './entitites/provider-summary-config.entity';
+import { ProviderStepEntity } from './entitites/provider-step.entity';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { ProviderSummaryConfigEntity } from './entitites/provider-summary-config
       ProviderConfigEntity,
       ProviderLeadsConfigEntity,
       ProviderSummaryConfigEntity,
+      ProviderStepEntity,
     ]),
   ],
   providers: [ProviderConfigService],
