@@ -8,6 +8,7 @@ import { CommonModule } from './common/common.module';
 import { ScrapperModule } from './scrapper/scrapper.module';
 import { ProviderConfigModule } from './provider-config/provider-config.module';
 import { ClientWiseModule } from './client-wise/client-wise.module';
+import { ExtractionConfigModule } from './extraction-config/extraction-config.module';
 
 dotenv.config();
 @Module({
@@ -38,6 +39,7 @@ dotenv.config();
     ConfigModule.forRoot({ isGlobal: true }),
     CommonModule,
     ScrapperModule,
+    ExtractionConfigModule,
     ProviderConfigModule,
     ClientWiseModule,
   ],

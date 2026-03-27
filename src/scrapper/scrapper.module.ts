@@ -12,9 +12,12 @@ import { ClientWiseSummaryConfigEntity } from '../client-wise/entities/client-wi
 import { ClientWiseStepEntity } from '../client-wise/entities/client-wise-step.entity';
 import { ClientWiseLeadsDataEntity } from './entities/client-wise-leads-data.entity';
 import { ClientWiseSummaryDataEntity } from './entities/client-wise-summary-data.entity';
+import { ExtractionConfigModule } from '../extraction-config/extraction-config.module';
+import { DynamicExtractionService } from './dynamic-extraction.service';
 
 @Module({
   imports: [
+    ExtractionConfigModule,
     TypeOrmModule.forFeature([
       ClientWiseEntity,
       ClientWiseLeadsConfigEntity,
@@ -30,6 +33,7 @@ import { ClientWiseSummaryDataEntity } from './entities/client-wise-summary-data
     FormFillerService,
     ScrapingDataService,
     HandlePaginationService,
+    DynamicExtractionService,
   ],
   controllers: [ScrapperController],
   exports: [
@@ -38,6 +42,7 @@ import { ClientWiseSummaryDataEntity } from './entities/client-wise-summary-data
     FormFillerService,
     ScrapingDataService,
     HandlePaginationService,
+    DynamicExtractionService,
   ],
 })
 export class ScrapperModule {}

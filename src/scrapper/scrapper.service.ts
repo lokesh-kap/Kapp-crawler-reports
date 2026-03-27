@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ClientWiseEntity } from '../client-wise/entities/client-wise.entity';
@@ -15,13 +15,24 @@ import type { ScrapeTargetDto } from './dto/scrape-target.dto';
 import { ClientWiseLeadsConfigEntity as LeadsCfg } from '../client-wise/entities/client-wise-leads-config.entity';
 import { ClientWiseSummaryConfigEntity as SummaryCfg } from '../client-wise/entities/client-wise-summary-config.entity';
 import { ClientWiseStepEntity } from '../client-wise/entities/client-wise-step.entity';
+import { ExtractionConfigService } from '../extraction-config/extraction-config.service';
+import { DynamicExtractionService } from './dynamic-extraction.service';
+import { QueueManagerService } from '../common/providers/queue-service/queue-manager.service';
+import { WorkerManagerService } from '../common/providers/queue-service/worker-manager.service';
+import { Job } from 'bullmq';
 
 type TargetKind = 'leads' | 'summary';
 type StepGroup = 'normal' | 'advanced' | 'extra';
+type ScrapeWriteJob = {
+  target: TargetKind;
+  rows: Record<string, unknown>[];
+  meta: { client_id: number; year: number; user_id: number; config_id: number };
+};
 
 @Injectable()
-export class ScrapperService {
+export class ScrapperService implements OnModuleInit {
   private readonly logger = new Logger(ScrapperService.name);
+  private static readonly WRITE_QUEUE_NAME = 'scrape-db-write-queue';
 
   constructor(
     @InjectRepository(ClientWiseEntity)
@@ -40,7 +51,34 @@ export class ScrapperService {
     private readonly formFillerService: FormFillerService,
     private readonly scrapingDataService: ScrapingDataService,
     private readonly paginationService: HandlePaginationService,
+    private readonly extractionConfigService: ExtractionConfigService,
+    private readonly dynamicExtractionService: DynamicExtractionService,
+    private readonly queueManagerService: QueueManagerService,
+    private readonly workerManagerService: WorkerManagerService,
   ) {}
+
+  onModuleInit() {
+    this.queueManagerService.getQueue(ScrapperService.WRITE_QUEUE_NAME);
+    if (!this.workerManagerService.hasWorker(ScrapperService.WRITE_QUEUE_NAME)) {
+      this.workerManagerService.registerWorker<ScrapeWriteJob>({
+        queueName: ScrapperService.WRITE_QUEUE_NAME,
+        concurrency: 3,
+        processor: async (job: Job<ScrapeWriteJob>) => {
+          const payload = job.data;
+          const entities = payload.rows.map((row) =>
+            this.mapLeadOrSummaryRowToEntity(payload.target, row, payload.meta),
+          );
+          if (!entities.length) return { saved: 0 };
+          if (payload.target === 'leads') {
+            await this.leadsDataRepository.save(entities as ClientWiseLeadsDataEntity[]);
+          } else {
+            await this.summaryDataRepository.save(entities as ClientWiseSummaryDataEntity[]);
+          }
+          return { saved: entities.length };
+        },
+      });
+    }
+  }
 
   async scrapeLeads(dto: ScrapeTargetDto) {
     return this.scrapeTarget(dto, 'leads');
@@ -553,7 +591,8 @@ export class ScrapperService {
       e.mobile_verification_status = (normalized['mobile_verification_status'] ?? null) as string;
       e.lead_score = (normalized['lead_score'] ?? null) as string;
       e.registration_device = (normalized['registration_device'] ?? null) as string;
-      e.course_specialization = (normalized['course_specialization'] ?? null) as string;
+      e.course = (normalized['course'] ?? null) as string;
+      e.specialization = (normalized['specialization'] ?? null) as string;
       e.campus = (normalized['campus'] ?? null) as string;
       e.last_lead_activity_date = (normalized['last_lead_activity_date'] ?? null) as string;
       e.form_initiated = (normalized['form_initiated'] ?? null) as string;
@@ -669,7 +708,7 @@ export class ScrapperService {
       await this.login(page, dto, clientWise);
 
       const itemXpath = this.computeItemXpath(dto, targetConfig);
-      const nextButtonXpath = this.computeNextButtonXpath(dto);
+      let nextButtonXpath = this.computeNextButtonXpath(dto);
       const paginationOptions = this.buildPaginationOptionsFromComputed(dto, nextButtonXpath);
 
       this.logger.log(`Derived item_xpath=${itemXpath}`);
@@ -722,6 +761,29 @@ export class ScrapperService {
         itemXpath,
       };
 
+      // Optional dynamic extraction config for this config_id + target.
+      const tableConfig = await this.extractionConfigService.getActiveTableByConfig(
+        target,
+        resolvedConfigId,
+      );
+      const fieldConfigs = tableConfig
+        ? await this.extractionConfigService.getActiveFieldsByTableId(tableConfig.id)
+        : [];
+      const useDynamicExtraction = !!tableConfig && fieldConfigs.length > 0;
+
+      if (tableConfig?.next_selector?.trim()) {
+        nextButtonXpath = tableConfig.next_selector.trim();
+        this.logger.log(`Using next selector from config_tables: ${nextButtonXpath}`);
+        Object.assign(paginationOptions, { nextButtonXpath });
+      }
+      if (useDynamicExtraction) {
+        this.logger.log(
+          `Dynamic extraction enabled: table_id=${tableConfig!.id} row_selector=${tableConfig!.row_selector} fields=${fieldConfigs.length}`,
+        );
+      } else {
+        this.logger.log('Dynamic extraction not configured; using legacy filter schema extraction');
+      }
+
       // 6) Paginate + scrape + save per page (streaming) to avoid huge memory/DB writes.
       let totalRows = 0;
       let totalSaved = 0;
@@ -737,28 +799,40 @@ export class ScrapperService {
             .waitFor({ state: 'attached', timeout: 30000 })
             .catch(() => null);
 
-          const rows = await this.scrapingDataService.scrapeList(page, schema, listOptions);
+          const extractedRows = useDynamicExtraction
+            ? await this.dynamicExtractionService.extract(page, tableConfig!, fieldConfigs)
+            : await this.scrapingDataService.scrapeList(page, schema, listOptions);
+          const rows = useDynamicExtraction
+            ? this.dynamicExtractionService.mapFieldKeysToDbColumns(extractedRows, fieldConfigs)
+            : extractedRows;
           totalRows += rows.length;
 
-          const entities = rows.map((row) =>
-            this.mapLeadOrSummaryRowToEntity(target, row, {
-              client_id: clientWise.client_id,
-              year: clientWise.year,
-              user_id: clientWise.user_id,
-              config_id: resolvedConfigId,
-            }),
-          );
-
-          if (entities.length > 0) {
-            if (target === 'leads') {
-              await this.leadsDataRepository.save(entities as ClientWiseLeadsDataEntity[]);
-            } else {
-              await this.summaryDataRepository.save(entities as ClientWiseSummaryDataEntity[]);
-            }
-            totalSaved += entities.length;
+          const queuedRows = rows.length;
+          if (queuedRows > 0) {
+            await this.queueManagerService.addJob<ScrapeWriteJob>(
+              ScrapperService.WRITE_QUEUE_NAME,
+              `write-${target}`,
+              {
+                target,
+                rows,
+                meta: {
+                  client_id: clientWise.client_id,
+                  year: clientWise.year,
+                  user_id: clientWise.user_id,
+                  config_id: resolvedConfigId,
+                },
+              },
+              {
+                attempts: 3,
+                removeOnComplete: 1000,
+                removeOnFail: 1000,
+                backoff: { type: 'exponential', delay: 500 },
+              },
+            );
+            totalSaved += queuedRows;
           }
 
-          this.logger.log(`Scrape page ${pageNumber}: rows=${rows.length} saved=${entities.length}`);
+          this.logger.log(`Scrape page ${pageNumber}: rows=${rows.length} queued=${queuedRows}`);
           return rows.length;
         },
       );
@@ -772,6 +846,7 @@ export class ScrapperService {
         pages: pagesScraped,
         saved: totalSaved,
         total_scraped: totalRows,
+        queued: totalSaved,
       };
     } catch (err) {
       this.logger.error(`Scrape ${target} failed`, err instanceof Error ? err.stack : undefined);

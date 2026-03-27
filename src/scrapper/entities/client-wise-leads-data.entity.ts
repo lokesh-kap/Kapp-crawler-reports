@@ -70,7 +70,11 @@ export class ClientWiseLeadsDataEntity {
   registration_device: string;
 
   @Column({ type: 'text', nullable: true })
-  course_specialization: string;
+  course: string;
+
+  @Column({ type: 'text', nullable: true })
+  specialization: string;
+
 
   @Column({ type: 'text', nullable: true })
   campus: string;
