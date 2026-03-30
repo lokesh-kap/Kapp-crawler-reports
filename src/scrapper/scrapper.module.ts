@@ -14,6 +14,7 @@ import { ClientWiseLeadsDataEntity } from './entities/client-wise-leads-data.ent
 import { ClientWiseSummaryDataEntity } from './entities/client-wise-summary-data.entity';
 import { ExtractionConfigModule } from '../extraction-config/extraction-config.module';
 import { DynamicExtractionService } from './dynamic-extraction.service';
+import { ScrapeSchedulerService } from './scrape-scheduler.service';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { DynamicExtractionService } from './dynamic-extraction.service';
     ScrapingDataService,
     HandlePaginationService,
     DynamicExtractionService,
+    ScrapeSchedulerService,
   ],
   controllers: [ScrapperController],
   exports: [

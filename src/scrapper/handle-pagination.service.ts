@@ -11,8 +11,10 @@ export type PaginationOptions = {
   disabledAttribute?: string;
   maxPages?: number;
   delayMsBetweenPages?: number;
+  minWaitAfterNextClickMs?: number;
   stabilityCheckXpath?: string;
   maxSamePageRepeats?: number;
+  paginationChangeTimeoutMs?: number;
 };
 
 @Injectable()
@@ -27,7 +29,9 @@ export class HandlePaginationService {
     const maxPages = options.maxPages ?? 50;
     const stopWhenNextDisabled = options.stopWhenNextDisabled ?? true;
     const delayMsBetweenPages = options.delayMsBetweenPages ?? 0;
+    const minWaitAfterNextClickMs = options.minWaitAfterNextClickMs ?? 0;
     const maxSamePageRepeats = options.maxSamePageRepeats ?? 2;
+    const paginationChangeTimeoutMs = options.paginationChangeTimeoutMs ?? 4000;
     const results: T[] = [];
     let samePageRepeatCount = 0;
     const seenPageSignatures = new Set<string>();
@@ -78,6 +82,11 @@ export class HandlePaginationService {
       });
       await this.waitAfterPaginationClick(page, options);
 
+      // Hard minimum buffer after clicking next to let portal render fully.
+      if (minWaitAfterNextClickMs > 0) {
+        await page.waitForTimeout(minWaitAfterNextClickMs);
+      }
+
       if (delayMsBetweenPages > 0) {
         await page.waitForTimeout(delayMsBetweenPages);
       }
@@ -89,7 +98,7 @@ export class HandlePaginationService {
           page,
           options.stabilityCheckXpath,
           beforeSignature,
-          4000,
+          paginationChangeTimeoutMs,
         );
         if (changed) {
           this.logger.log('Pagination signature changed after short wait; continuing.');

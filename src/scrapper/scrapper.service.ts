@@ -181,6 +181,8 @@ export class ScrapperService implements OnModuleInit {
       // - very high safety cap to prevent infinite loops on buggy UIs
       maxPages: dto.max_pages ?? this.getEnvInt('SCRAPER_MAX_PAGES', 10000),
       delayMsBetweenPages: dto.delay_ms_between_pages ?? this.getEnvInt('SCRAPER_DELAY_MS_BETWEEN_PAGES', 0),
+      minWaitAfterNextClickMs: this.getEnvInt('SCRAPER_MIN_WAIT_AFTER_NEXT_CLICK_MS', 5000),
+      paginationChangeTimeoutMs: this.getEnvInt('SCRAPER_PAGINATION_CHANGE_TIMEOUT_MS', 12000),
       stopWhenNextDisabled: dto.stop_when_next_disabled ?? this.getEnvBool('SCRAPER_STOP_WHEN_NEXT_DISABLED', true),
     };
   }
