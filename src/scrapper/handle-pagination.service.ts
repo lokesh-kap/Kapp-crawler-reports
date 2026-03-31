@@ -17,14 +17,25 @@ export type PaginationOptions = {
   paginationChangeTimeoutMs?: number;
 };
 
+/** Return this from onPage to stop after this page (e.g. duplicate data detected). */
+export type PaginateOnPageResult<T> = T | { value: T; stopPagination: boolean };
+
 @Injectable()
 export class HandlePaginationService {
   private readonly logger = new Logger(HandlePaginationService.name);
 
+  private unpackOnPageResult<T>(raw: PaginateOnPageResult<T>): { value: T; stopPagination: boolean } {
+    if (raw !== null && typeof raw === 'object' && 'value' in raw && 'stopPagination' in raw) {
+      const o = raw as { value: T; stopPagination: boolean };
+      return { value: o.value, stopPagination: !!o.stopPagination };
+    }
+    return { value: raw as T, stopPagination: false };
+  }
+
   async paginate<T>(
     page: Page,
     options: PaginationOptions,
-    onPage: (page: Page, pageNumber: number) => Promise<T>,
+    onPage: (page: Page, pageNumber: number) => Promise<PaginateOnPageResult<T>>,
   ): Promise<T[]> {
     const maxPages = options.maxPages ?? 50;
     const stopWhenNextDisabled = options.stopWhenNextDisabled ?? true;
@@ -48,7 +59,13 @@ export class HandlePaginationService {
         }
         seenPageSignatures.add(currentSignature);
       }
-      results.push(await onPage(page, pageNumber));
+      const onPageRaw = await onPage(page, pageNumber);
+      const { value: pageValue, stopPagination } = this.unpackOnPageResult(onPageRaw);
+      results.push(pageValue);
+      if (stopPagination) {
+        this.logger.warn('Pagination stopped: onPage reported duplicate or end condition.');
+        break;
+      }
 
       const beforeSignature = await this.getPageSignature(page, options.stabilityCheckXpath);
       this.logger.log(`Pagination signature before click (page ${pageNumber}): ${beforeSignature}`);

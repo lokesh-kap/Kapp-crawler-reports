@@ -7,7 +7,12 @@ import { ClientWiseSummaryConfigEntity } from '../client-wise/entities/client-wi
 import { ClientWiseLeadsDataEntity } from './entities/client-wise-leads-data.entity';
 import { ClientWiseSummaryDataEntity } from './entities/client-wise-summary-data.entity';
 import { ScrapingDataService, type ScrapeFieldConfig, type ScrapeListOptions, type ScrapeSchema, type ScrapeFieldConfig as ScrapeField } from './scraping-data.service';
-import { FormFillerService, type FormFieldConfig, type FormFieldType } from './form-filler.service';
+import {
+  FormFillerService,
+  type DateFillStrategy,
+  type FormFieldConfig,
+  type FormFieldType,
+} from './form-filler.service';
 import { HandlePaginationService, type PaginationOptions } from './handle-pagination.service';
 import { PlaywrightService } from './playwright.service';
 import type { Page } from 'playwright';
@@ -110,6 +115,8 @@ export class ScrapperService implements OnModuleInit {
         // Treat "search" as a text input (user provides value_to_apply),
         // and use a separate "button"/"click" filter item to submit the search.
         return 'text';
+      case 'fill_text':
+        return 'text';
       case 'checkbox':
         return 'checkbox';
       case 'click':
@@ -118,9 +125,21 @@ export class ScrapperService implements OnModuleInit {
         return 'radio';
       case 'file':
         return 'file';
+      case 'date':
+      case 'datetime-local':
+      case 'datetime':
+        return 'date';
+      case 'date_range':
+        return 'date_range';
       default:
         return 'text';
     }
+  }
+
+  private parseItemDateStrategy(item: { date_strategy?: string } | undefined): DateFillStrategy | undefined {
+    const raw = typeof item?.date_strategy === 'string' ? item.date_strategy.trim().toLowerCase() : '';
+    if (raw === 'auto' || raw === 'fill' || raw === 'js') return raw;
+    return undefined;
   }
 
   private mapSelectorTypeToScrapeSource(selectorType: string | undefined): 'text' | 'html' | 'value' | 'attr' {
@@ -200,6 +219,59 @@ export class ScrapperService implements OnModuleInit {
     if (!raw) return defaultValue;
     const n = Number(raw);
     return Number.isFinite(n) ? n : defaultValue;
+  }
+
+  /**
+   * Wait until row locator count is stable (and optionally >= expected_rows_per_page)
+   * so large page sizes (e.g. 1000) finish rendering before extract / next pagination click.
+   */
+  private async waitForTableRowsReady(page: Page, rowXpath: string, dto: ScrapeTargetDto): Promise<void> {
+    const trimmed = (rowXpath ?? '').trim();
+    if (!trimmed) return;
+
+    const envMin = this.getEnvInt('SCRAPER_EXPECTED_ROWS_PER_PAGE', 0);
+    const minCount =
+      dto.expected_rows_per_page ?? (envMin > 0 ? envMin : undefined);
+    const timeoutMs = this.getEnvInt('SCRAPER_ROW_COUNT_SETTLE_TIMEOUT_MS', 60000);
+    const stableRounds = Math.max(2, this.getEnvInt('SCRAPER_ROW_COUNT_STABLE_POLLS', 3));
+    const pollMs = this.getEnvInt('SCRAPER_ROW_COUNT_POLL_MS', 500);
+
+    const locator = page.locator(`xpath=${trimmed}`);
+    const deadline = Date.now() + timeoutMs;
+    let last = -1;
+    let stable = 0;
+
+    while (Date.now() < deadline) {
+      const n = await locator.count().catch(() => 0);
+      const meetsMin = minCount == null || n >= minCount;
+      if (n > 0 && n === last) {
+        stable += 1;
+        if (stable >= stableRounds && meetsMin) {
+          this.logger.log(
+            `Table rows ready: count=${n} stable_polls=${stableRounds} min_expected=${minCount ?? 'off'}`,
+          );
+          return;
+        }
+      } else {
+        stable = 0;
+      }
+      last = n;
+      await page.waitForTimeout(pollMs);
+    }
+
+    this.logger.warn(
+      `Row count settle timeout (${timeoutMs}ms): last_count=${last} min_expected=${minCount ?? 'off'} — continuing`,
+    );
+  }
+
+  /** Stable JSON for comparing “first row” across pagination pages. */
+  private fingerprintFirstRowForPagination(row: Record<string, unknown>): string {
+    const keys = Object.keys(row).sort();
+    const sorted: Record<string, unknown> = {};
+    for (const k of keys) {
+      sorted[k] = row[k];
+    }
+    return JSON.stringify(sorted);
   }
 
   private computeNextButtonXpath(dto: ScrapeTargetDto): string {
@@ -419,12 +491,17 @@ export class ScrapperService implements OnModuleInit {
           `value_to_apply=${effectiveValueToApply ?? ''} match_count=${matchCount} xpath=${xpath}`,
       );
 
+      const secondaryXpath =
+        typeof (item as any)?.xpath_end === 'string' ? String((item as any).xpath_end).trim() : '';
+      const dateStrategy = this.parseItemDateStrategy(item as { date_strategy?: string });
       const field: FormFieldConfig = {
         xpath,
         type: formType,
         value: effectiveValueToApply,
         optional: true,
         timeoutMs: 30000,
+        ...(secondaryXpath ? { secondaryXpath } : {}),
+        ...(dateStrategy ? { dateStrategy } : {}),
       };
 
       // DOM often changes after login; retry a bit if element isn't ready yet.
@@ -524,12 +601,22 @@ export class ScrapperService implements OnModuleInit {
       // meta_data.selector_type may be stale ("click") from earlier UI defaults.
       const selectorType = String(stepType || meta['selector_type'] || 'click');
       const delay = Number(meta['delay_ms'] ?? 0);
+      const xpathEnd =
+        typeof meta['xpath_end'] === 'string' ? String(meta['xpath_end']).trim() : '';
+      const dateStrategyRaw =
+        typeof meta['date_strategy'] === 'string' ? String(meta['date_strategy']).trim().toLowerCase() : '';
+      const date_strategy =
+        dateStrategyRaw === 'auto' || dateStrategyRaw === 'fill' || dateStrategyRaw === 'js'
+          ? dateStrategyRaw
+          : undefined;
       return {
         xpath: s.xpath,
         name: s.name ?? '',
         selector_type: selectorType,
         value_to_apply: value,
         delay: Number.isFinite(delay) ? delay : 0,
+        ...(xpathEnd ? { xpath_end: xpathEnd } : {}),
+        ...(date_strategy ? { date_strategy } : {}),
       };
     });
     await this.applyFilters(page, mapped);
@@ -748,8 +835,11 @@ export class ScrapperService implements OnModuleInit {
         await this.waitBetweenStepPhases(page, 'after normal steps');
       }
 
-      // Then extra step group (if enabled and configured).
-      if (stepCount > 0 && (targetConfig as any).has_extra_steps) {
+      // Extra steps: run whenever the step executor is used (same as normal). Rows are loaded
+      // from DB by group; executeStepGroup no-ops if there are none. Do not gate on
+      // has_extra_steps — that flag can drift false while extra rows still exist, which
+      // skipped date/limit follow-up steps after normal steps.
+      if (stepCount > 0) {
         await this.executeStepGroup(page, clientWise.id, target, 'extra');
         await this.waitBetweenStepPhases(page, 'after extra steps');
       }
@@ -786,9 +876,17 @@ export class ScrapperService implements OnModuleInit {
         this.logger.log('Dynamic extraction not configured; using legacy filter schema extraction');
       }
 
+      const rowXpathForPagination =
+        useDynamicExtraction && tableConfig
+          ? this.dynamicExtractionService.normalizeRowSelectorForCount(tableConfig.row_selector)
+          : itemXpath;
+      Object.assign(paginationOptions, { stabilityCheckXpath: rowXpathForPagination });
+      this.logger.log(`Pagination stabilityCheckXpath (first row text must change after Next): ${rowXpathForPagination}`);
+
       // 6) Paginate + scrape + save per page (streaming) to avoid huge memory/DB writes.
       let totalRows = 0;
       let totalSaved = 0;
+      let previousFirstRowFingerprint: string | null = null;
 
       const perPageCounts = await this.paginationService.paginate<number>(
         page,
@@ -801,15 +899,35 @@ export class ScrapperService implements OnModuleInit {
             .waitFor({ state: 'attached', timeout: 30000 })
             .catch(() => null);
 
+          const rowXpathForSettle = rowXpathForPagination;
+          await this.waitForTableRowsReady(page, rowXpathForSettle, dto);
+
           const extractedRows = useDynamicExtraction
             ? await this.dynamicExtractionService.extract(page, tableConfig!, fieldConfigs)
             : await this.scrapingDataService.scrapeList(page, schema, listOptions);
           const rows = useDynamicExtraction
             ? this.dynamicExtractionService.mapFieldKeysToDbColumns(extractedRows, fieldConfigs)
             : extractedRows;
-          totalRows += rows.length;
 
-          const queuedRows = rows.length;
+          let stopPagination = false;
+          if (rows.length > 0) {
+            const fp = this.fingerprintFirstRowForPagination(rows[0] as Record<string, unknown>);
+            if (pageNumber >= 2 && previousFirstRowFingerprint !== null && fp === previousFirstRowFingerprint) {
+              this.logger.warn(
+                `Page ${pageNumber} first row matches previous page (table did not advance after Next). ` +
+                  `Not queuing duplicate rows. Stop pagination.`,
+              );
+              stopPagination = true;
+            } else {
+              previousFirstRowFingerprint = fp;
+            }
+          }
+
+          if (!stopPagination) {
+            totalRows += rows.length;
+          }
+
+          const queuedRows = stopPagination ? 0 : rows.length;
           if (queuedRows > 0) {
             await this.queueManagerService.addJob<ScrapeWriteJob>(
               ScrapperService.WRITE_QUEUE_NAME,
@@ -835,6 +953,9 @@ export class ScrapperService implements OnModuleInit {
           }
 
           this.logger.log(`Scrape page ${pageNumber}: rows=${rows.length} queued=${queuedRows}`);
+          if (stopPagination) {
+            return { value: 0, stopPagination: true };
+          }
           return rows.length;
         },
       );

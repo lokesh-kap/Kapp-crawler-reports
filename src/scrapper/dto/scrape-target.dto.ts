@@ -64,5 +64,11 @@ export class ScrapeTargetDto {
   @IsOptional()
   @IsString()
   disabled_attribute?: string;
+
+  /** After filters / page-size change, wait until at least this many table rows exist (or settle timeout). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  expected_rows_per_page?: number;
 }
 

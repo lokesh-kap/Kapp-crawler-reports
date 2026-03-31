@@ -22,6 +22,8 @@ export class StepItemDto {
     'submit',
     'wait_visible',
     'wait_hidden',
+    'date',
+    'date_range',
   ])
   step_type: string;
 

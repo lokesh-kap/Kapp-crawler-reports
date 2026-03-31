@@ -152,6 +152,22 @@ export class ClientWiseService {
     await this.clientWiseStepRepository.save(toSave);
   }
 
+  /**
+   * When `extra_steps` is present in the payload, derive `has_extra_steps` from non-empty steps
+   * so the DB flag cannot stay false while date/extra steps are saved (scraper used to skip extras).
+   */
+  private resolveHasExtraStepsFlag(
+    payload: UpsertClientWiseScraperConfigDto,
+    existingFlag?: boolean,
+  ): boolean {
+    if (Array.isArray(payload.extra_steps)) {
+      return payload.extra_steps.some(
+        (s) => String(s.step_type ?? '').trim().length > 0 && String(s.xpath ?? '').trim().length > 0,
+      );
+    }
+    return payload.has_extra_steps ?? existingFlag ?? false;
+  }
+
   async upsertLeadsConfig(payload: UpsertClientWiseScraperConfigDto) {
     const commonConfig = await this.findByClientYearAndConfigId(
       payload.client_id,
@@ -173,7 +189,7 @@ export class ClientWiseService {
       const merged = this.clientWiseLeadsConfigRepository.merge(existing, {
         ...payload,
         client_wise_id: commonConfig.id,
-        has_extra_steps: payload.has_extra_steps ?? existing.has_extra_steps ?? false,
+        has_extra_steps: this.resolveHasExtraStepsFlag(payload, existing.has_extra_steps),
       });
       const saved = await this.clientWiseLeadsConfigRepository.save(merged);
       await this.replaceStepGroup(commonConfig.id, 'leads', 'normal', payload.normal_steps);
@@ -186,7 +202,7 @@ export class ClientWiseService {
       client_wise_id: commonConfig.id,
       filters: payload.filters ?? [],
       is_advance_filters: payload.is_advance_filters ?? false,
-      has_extra_steps: payload.has_extra_steps ?? false,
+      has_extra_steps: this.resolveHasExtraStepsFlag(payload, false),
       is_active: payload.is_active ?? true,
     });
     const saved = await this.clientWiseLeadsConfigRepository.save(created);
@@ -217,7 +233,7 @@ export class ClientWiseService {
       const merged = this.clientWiseSummaryConfigRepository.merge(existing, {
         ...payload,
         client_wise_id: commonConfig.id,
-        has_extra_steps: payload.has_extra_steps ?? existing.has_extra_steps ?? false,
+        has_extra_steps: this.resolveHasExtraStepsFlag(payload, existing.has_extra_steps),
       });
       const saved = await this.clientWiseSummaryConfigRepository.save(merged);
       await this.replaceStepGroup(commonConfig.id, 'summary', 'normal', payload.normal_steps);
@@ -230,7 +246,7 @@ export class ClientWiseService {
       client_wise_id: commonConfig.id,
       filters: payload.filters ?? [],
       is_advance_filters: payload.is_advance_filters ?? false,
-      has_extra_steps: payload.has_extra_steps ?? false,
+      has_extra_steps: this.resolveHasExtraStepsFlag(payload, false),
       is_active: payload.is_active ?? true,
     });
     const saved = await this.clientWiseSummaryConfigRepository.save(created);

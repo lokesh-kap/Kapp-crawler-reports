@@ -20,7 +20,9 @@ export type StepActionType =
   | 'radio'
   | 'submit'
   | 'wait_visible'
-  | 'wait_hidden';
+  | 'wait_hidden'
+  | 'date'
+  | 'date_range';
 
 @Entity('client_wise_step')
 export class ClientWiseStepEntity {

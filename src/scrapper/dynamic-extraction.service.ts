@@ -7,6 +7,11 @@ import { ConfigTableFieldEntity } from '../extraction-config/entities/config-tab
 export class DynamicExtractionService {
   private readonly logger = new Logger(DynamicExtractionService.name);
 
+  /** Same normalization as extract(); use before counting rows for pagination wait. */
+  normalizeRowSelectorForCount(selector: string): string {
+    return this.normalizeRowSelector(selector);
+  }
+
   private normalizeRowSelector(selector: string): string {
     const raw = (selector ?? '').trim();
     if (!raw) return raw;

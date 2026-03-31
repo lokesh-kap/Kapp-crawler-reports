@@ -29,6 +29,10 @@ export class ProviderFilterDto {
   @IsOptional()
   @IsString()
   xpath?: string;
+
+  @IsOptional()
+  @IsString()
+  xpath_end?: string;
 }
 
 export class ProviderCredentialDto {

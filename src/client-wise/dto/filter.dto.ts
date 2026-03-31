@@ -20,6 +20,11 @@ export class FilterDto {
   @IsOptional()
   @IsString()
   xpath?: string;
+
+  /** Second field XPath for `date_range` (start = xpath, end = xpath_end). */
+  @IsOptional()
+  @IsString()
+  xpath_end?: string;
 }
 
 export class CredentialDto {

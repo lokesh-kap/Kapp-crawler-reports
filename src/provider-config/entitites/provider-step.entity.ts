@@ -20,7 +20,9 @@ export type ProviderStepActionType =
   | 'radio'
   | 'submit'
   | 'wait_visible'
-  | 'wait_hidden';
+  | 'wait_hidden'
+  | 'date'
+  | 'date_range';
 
 @Entity('provider_step')
 export class ProviderStepEntity {
