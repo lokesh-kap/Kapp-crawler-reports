@@ -168,18 +168,40 @@ export class ScrapperService implements OnModuleInit {
     return schema;
   }
 
-  private async navigateWithRetry(page: Page, url: string, maxRetries: number, waitForXPaths: string[]) {
+  private async navigateWithRetry(
+    page: Page,
+    url: string,
+    maxRetries: number,
+    waitForXPaths: string[],
+    opts?: {
+      gotoTimeoutMs?: number;
+      locatorTimeoutMs?: number;
+      /** After commit, wait for domcontentloaded (helps slow proxy + Angular bootstrap). */
+      waitDomContentLoaded?: boolean;
+    },
+  ) {
+    const gotoTimeoutMs = opts?.gotoTimeoutMs ?? this.getEnvInt('SCRAPER_NAV_GOTO_TIMEOUT_MS', 45000);
+    const locatorTimeoutMs = opts?.locatorTimeoutMs ?? this.getEnvInt('SCRAPER_POST_GOTO_LOCATOR_TIMEOUT_MS', 15000);
+    const waitDom =
+      opts?.waitDomContentLoaded ??
+      this.getEnvBool('SCRAPER_NAV_WAIT_DOMCONTENTLOADED', false);
+
     let lastErr: unknown;
     for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
       try {
-        this.logger.log(`Navigation attempt ${attempt}/${maxRetries} => ${url}`);
+        this.logger.log(
+          `Navigation attempt ${attempt}/${maxRetries} => ${url} (goto_timeout_ms=${gotoTimeoutMs} locator_timeout_ms=${locatorTimeoutMs} domcontentloaded=${waitDom})`,
+        );
         // Use "commit" like PunchService: more reliable when DOM/load events are flaky via proxy.
-        await page.goto(url, { waitUntil: 'commit', timeout: 45000 });
+        await page.goto(url, { waitUntil: 'commit', timeout: gotoTimeoutMs });
 
-        // Proxy: DOM might not become ready; wait for the key elements.
+        if (waitDom) {
+          await page.waitForLoadState('domcontentloaded', { timeout: gotoTimeoutMs }).catch(() => null);
+        }
+
         for (const xpath of waitForXPaths) {
           if (!xpath) continue;
-          await page.locator(`xpath=${xpath}`).first().waitFor({ state: 'visible', timeout: 15000 });
+          await this.waitForLoginOrNavLocator(page, xpath, locatorTimeoutMs);
         }
 
         return;
@@ -189,6 +211,29 @@ export class ScrapperService implements OnModuleInit {
       }
     }
     throw lastErr instanceof Error ? lastErr : new Error('Navigation failed');
+  }
+
+  /**
+   * Wait for xpath to become visible; on slow proxy / SPA paint, retry after a short pause if attached only.
+   */
+  private async waitForLoginOrNavLocator(page: Page, xpath: string, locatorTimeoutMs: number): Promise<void> {
+    const loc = page.locator(`xpath=${xpath}`).first();
+    try {
+      await loc.waitFor({ state: 'visible', timeout: locatorTimeoutMs });
+      return;
+    } catch (firstErr) {
+      const attached = await loc.count().catch(() => 0);
+      if (attached > 0) {
+        this.logger.warn(
+          `Locator visible timeout (${locatorTimeoutMs}ms) but element exists; waiting for paint xpath=${xpath.slice(0, 120)}`,
+        );
+        await page.waitForTimeout(2000);
+        await loc.scrollIntoViewIfNeeded().catch(() => null);
+        await loc.waitFor({ state: 'visible', timeout: locatorTimeoutMs });
+        return;
+      }
+      throw firstErr;
+    }
   }
 
   private buildPaginationOptionsFromComputed(dto: ScrapeTargetDto, nextButtonXpath: string): PaginationOptions {
@@ -367,8 +412,16 @@ export class ScrapperService implements OnModuleInit {
       throw new BadRequestException('login_xpath and password_xpath are required in client wise credentials');
     }
     const maxRetries = dto.max_retries ?? 3;
+    const loginGotoMs = this.getEnvInt('SCRAPER_LOGIN_GOTO_TIMEOUT_MS', 90000);
+    const loginLocatorMs = this.getEnvInt('SCRAPER_LOGIN_FORM_LOCATOR_TIMEOUT_MS', 120000);
+    const loginFillMs = this.getEnvInt('SCRAPER_LOGIN_FIELD_FILL_TIMEOUT_MS', 120000);
+    const loginWaitDom = this.getEnvBool('SCRAPER_LOGIN_WAIT_DOMCONTENTLOADED', true);
 
-    await this.navigateWithRetry(page, creds.login_url, maxRetries, [creds.login_xpath, creds.password_xpath]);
+    await this.navigateWithRetry(page, creds.login_url, maxRetries, [creds.login_xpath, creds.password_xpath], {
+      gotoTimeoutMs: loginGotoMs,
+      locatorTimeoutMs: loginLocatorMs,
+      waitDomContentLoaded: loginWaitDom,
+    });
     this.logger.log(`After login page navigation: url=${page.url()}`);
 
     // Fill login + password.
@@ -376,11 +429,13 @@ export class ScrapperService implements OnModuleInit {
       xpath: creds.login_xpath,
       type: this.mapSelectorTypeToFormFieldType(creds.login_selector_type),
       value: creds.login,
+      timeoutMs: loginFillMs,
     };
     const passwordField: FormFieldConfig = {
       xpath: creds.password_xpath,
       type: this.mapSelectorTypeToFormFieldType(creds.password_selector_type),
       value: creds.password,
+      timeoutMs: loginFillMs,
     };
 
     await this.formFillerService.fillForm(page, [loginField], { stopOnError: true });
@@ -394,11 +449,12 @@ export class ScrapperService implements OnModuleInit {
     try {
       // 1) Preferred: click configured submit xpath.
       const submitXpath = (creds as any)?.login_submit_xpath?.trim?.();
+      const submitClickMs = this.getEnvInt('SCRAPER_LOGIN_SUBMIT_CLICK_TIMEOUT_MS', 30000);
       if (submitXpath) {
-        await page.locator(`xpath=${submitXpath}`).first().click({ timeout: 8000 });
+        await page.locator(`xpath=${submitXpath}`).first().click({ timeout: submitClickMs });
       } else {
         // 2) Heuristic: common submit button.
-        await page.locator(`xpath=//button[@type="submit"]`).first().click({ timeout: 5000 });
+        await page.locator(`xpath=//button[@type="submit"]`).first().click({ timeout: submitClickMs });
       }
     } catch {
       try {

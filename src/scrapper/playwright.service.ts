@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Browser, BrowserContext, Page, chromium } from 'playwright';
+import { Browser, BrowserContext, BrowserContextOptions, Page, chromium } from 'playwright';
 
 type BrowserLaunchResult = {
   browser: Browser;
@@ -40,10 +40,17 @@ export class PlaywrightService {
       proxy,
     });
 
-    const context = await browser.newContext({
-      userAgent: this.getRandomUserAgent(),
-      viewport: { width: 1280, height: 720 },
-    });
+    const contextOptions = this.buildBrowserContextOptions();
+    const extraHdrs = contextOptions.extraHTTPHeaders;
+    const acceptLanguageLog =
+      extraHdrs !== undefined ? (extraHdrs['Accept-Language'] ?? '(none)') : '(none)';
+    this.logger.log(
+      `Browser context: locale=${contextOptions.locale ?? 'default'} ` +
+        `Accept-Language=${acceptLanguageLog} ` +
+        `ua_len=${(contextOptions.userAgent ?? '').length}`,
+    );
+
+    const context = await browser.newContext(contextOptions);
 
     const page = await context.newPage();
 
@@ -99,11 +106,71 @@ export class PlaywrightService {
     return defaultValue;
   }
 
-  private getRandomUserAgent(): string {
+  /**
+   * Full Chrome-style UAs (Chromium). Truncated UAs are often rejected by CDNs/WAFs as non-browser traffic.
+   * Playwright still aligns Sec-CH-UA with the bundled Chromium.
+   */
+  private pickOrganicUserAgent(): string {
+    const fromEnv = (process.env.SCRAPER_USER_AGENT ?? '').trim();
+    if (fromEnv.length > 20) return fromEnv;
+
+    const chromeMajor = '131';
     const agents = [
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+      `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeMajor}.0.0.0 Safari/537.36`,
+      `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeMajor}.0.0.0 Safari/537.36`,
+      `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeMajor}.0.0.0 Safari/537.36`,
     ];
     return agents[Math.floor(Math.random() * agents.length)];
+  }
+
+  /**
+   * Locale + Accept-Language + optional JSON headers. Helps regional sites; not a bypass for strong bot detection.
+   */
+  private buildBrowserContextOptions(): BrowserContextOptions {
+    const viewportW = this.parsePositiveInt(process.env.SCRAPER_VIEWPORT_WIDTH, 1280);
+    const viewportH = this.parsePositiveInt(process.env.SCRAPER_VIEWPORT_HEIGHT, 720);
+    const locale = (process.env.SCRAPER_LOCALE ?? 'en-IN').trim() || 'en-IN';
+    const acceptLanguage =
+      (process.env.SCRAPER_ACCEPT_LANGUAGE ?? 'en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7').trim() ||
+      'en-IN,en;q=0.9';
+
+    const extra: Record<string, string> = {
+      'Accept-Language': acceptLanguage,
+    };
+
+    const tz = (process.env.SCRAPER_TIMEZONE_ID ?? '').trim();
+    const rawJson = (process.env.SCRAPER_EXTRA_HTTP_HEADERS_JSON ?? '').trim();
+    if (rawJson) {
+      try {
+        const parsed = JSON.parse(rawJson) as Record<string, unknown>;
+        for (const [k, v] of Object.entries(parsed)) {
+          if (typeof v === 'string' && v.length > 0) extra[k] = v;
+        }
+      } catch {
+        this.logger.warn('SCRAPER_EXTRA_HTTP_HEADERS_JSON is not valid JSON; ignoring');
+      }
+    }
+
+    const opts: BrowserContextOptions = {
+      userAgent: this.pickOrganicUserAgent(),
+      viewport: { width: viewportW, height: viewportH },
+      locale,
+      extraHTTPHeaders: extra,
+    };
+
+    if (tz) {
+      opts.timezoneId = tz;
+    }
+
+    if (this.parseBoolean(process.env.SCRAPER_IGNORE_HTTPS_ERRORS, false)) {
+      opts.ignoreHTTPSErrors = true;
+    }
+
+    return opts;
+  }
+
+  private parsePositiveInt(raw: string | undefined, fallback: number): number {
+    const n = Number(String(raw ?? '').trim());
+    return Number.isFinite(n) && n >= 200 ? n : fallback;
   }
 }
