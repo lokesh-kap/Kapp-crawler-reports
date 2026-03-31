@@ -3,7 +3,16 @@ import { AppModule } from './app.module';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { DatabaseExceptionFilter } from './common/database-exception';
-import * as bodyParser from 'body-parser'; 
+import * as bodyParser from 'body-parser';
+
+/** Split comma-separated URLs (e.g. FRONTEND_URL) into trimmed non-empty strings. */
+function parseCommaSeparatedUrls(raw: string | undefined): string[] {
+  if (!raw?.trim()) return [];
+  return raw
+    .split(',')
+    .map((u) => u.trim())
+    .filter((u) => u.length > 0);
+}
 
 async function bootstrap() {
 
@@ -24,13 +33,8 @@ async function bootstrap() {
   app.useGlobalFilters(new DatabaseExceptionFilter());
 
   const allowedOrigins = [
-    process.env.FRONTEND_URL,
-    process.env.BACKEND_URL,
-  ].filter(Boolean); // Remove undefined values
-
-  if (process.env.NODE_ENV !== "production") {
-    allowedOrigins.push("http://localhost:3000", "http://localhost:5173", "http://localhost:3001");
-  }
+    ...parseCommaSeparatedUrls(process.env.ALLOWED_ORIGINS),
+  ];
 
   app.enableCors({
     origin: (origin, callback) => {
