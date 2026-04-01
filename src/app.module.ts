@@ -10,6 +10,7 @@ import { ScrapperModule } from './scrapper/scrapper.module';
 import { ProviderConfigModule } from './provider-config/provider-config.module';
 import { ClientWiseModule } from './client-wise/client-wise.module';
 import { ExtractionConfigModule } from './extraction-config/extraction-config.module';
+import { BulkUploadModule } from './bulk-upload/bulk-upload.module';
 
 dotenv.config();
 @Module({
@@ -44,6 +45,7 @@ dotenv.config();
     ExtractionConfigModule,
     ProviderConfigModule,
     ClientWiseModule,
+    BulkUploadModule,
   ],
   controllers: [AppController],
   providers: [AppService],

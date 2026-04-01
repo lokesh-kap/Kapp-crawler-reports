@@ -218,6 +218,15 @@ export class ProviderConfigService {
     return providerConfig;
   }
 
+  /** Resolved entity for config_id (LMS provider id); used by bulk upload and internal flows. */
+  async requireEntityByConfigId(config_id: number): Promise<ProviderConfigEntity> {
+    const row = await this.providerConfigRepository.findOne({ where: { config_id } });
+    if (!row) {
+      throw new NotFoundException(`Provider config with config_id ${config_id} not found`);
+    }
+    return row;
+  }
+
   async update(id: number, updateProviderConfigDto: UpdateProviderConfigDto) {
     const providerConfig = await this.findOne(id);
     const merged = this.providerConfigRepository.merge(
