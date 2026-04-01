@@ -6,7 +6,7 @@ import {
   IsUrl,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { FilterDto } from './filter.dto';
 import { StepItemDto } from './step.dto';
 
@@ -37,6 +37,11 @@ export class UpsertClientWiseScraperConfigDto {
   is_advance_filters?: boolean;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === true || value === 'true' || value === 1 || value === '1') return true;
+    if (value === false || value === 'false' || value === 0 || value === '0') return false;
+    return value;
+  })
   @IsBoolean()
   has_extra_steps?: boolean;
 

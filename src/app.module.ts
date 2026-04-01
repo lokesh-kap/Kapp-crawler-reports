@@ -3,6 +3,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import * as dotenv from 'dotenv';
 import { CommonModule } from './common/common.module';
 import { ScrapperModule } from './scrapper/scrapper.module';
@@ -37,6 +38,7 @@ dotenv.config();
     }),
 
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     CommonModule,
     ScrapperModule,
     ExtractionConfigModule,

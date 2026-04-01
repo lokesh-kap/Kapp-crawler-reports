@@ -153,19 +153,53 @@ export class ClientWiseService {
   }
 
   /**
-   * When `extra_steps` is present in the payload, derive `has_extra_steps` from non-empty steps
-   * so the DB flag cannot stay false while date/extra steps are saved (scraper used to skip extras).
+   * Persist `has_extra_steps` from the UI checkbox and/or saved steps.
+   * If we only derived from non-empty `extra_steps`, checking "Enable extra steps" with empty
+   * placeholder rows would save `has_extra_steps: false` and the LMS checkbox would clear after create.
    */
+  /** Read checkbox from payload after DTO transform; tolerate odd JSON shapes. */
+  private payloadWantsExtraSteps(payload: UpsertClientWiseScraperConfigDto): boolean | undefined {
+    const v = payload.has_extra_steps as unknown;
+    if (v === true || v === 'true' || v === 1 || v === '1') return true;
+    if (v === false || v === 'false' || v === 0 || v === '0') return false;
+    return undefined;
+  }
+
   private resolveHasExtraStepsFlag(
     payload: UpsertClientWiseScraperConfigDto,
     existingFlag?: boolean,
   ): boolean {
-    if (Array.isArray(payload.extra_steps)) {
-      return payload.extra_steps.some(
+    const hasValidExtraStep =
+      Array.isArray(payload.extra_steps) &&
+      payload.extra_steps.some(
         (s) => String(s.step_type ?? '').trim().length > 0 && String(s.xpath ?? '').trim().length > 0,
       );
+    if (hasValidExtraStep) return true;
+
+    const explicit = this.payloadWantsExtraSteps(payload);
+    if (explicit !== undefined) return explicit;
+
+    if (Array.isArray(payload.extra_steps)) {
+      return false;
     }
-    return payload.has_extra_steps ?? existingFlag ?? false;
+
+    return existingFlag ?? false;
+  }
+
+  /** Fields stored on leads/summary row only (not step arrays). */
+  private pickTabConfigPayload(
+    payload: UpsertClientWiseScraperConfigDto,
+  ): Omit<
+    UpsertClientWiseScraperConfigDto,
+    'normal_steps' | 'advanced_steps' | 'extra_steps'
+  > {
+    const {
+      normal_steps: _n,
+      advanced_steps: _a,
+      extra_steps: _e,
+      ...rest
+    } = payload;
+    return rest;
   }
 
   async upsertLeadsConfig(payload: UpsertClientWiseScraperConfigDto) {
@@ -180,31 +214,38 @@ export class ClientWiseService {
       );
     }
 
-    const existing = await this.getLeadsConfig(
-      payload.client_id,
-      payload.year,
-      payload.config_id,
-    );
-    if (existing) {
-      const merged = this.clientWiseLeadsConfigRepository.merge(existing, {
-        ...payload,
+    const existingRow = await this.clientWiseLeadsConfigRepository.findOne({
+      where: {
+        client_id: payload.client_id,
+        year: payload.year,
+        config_id: payload.config_id,
+      },
+    });
+    if (existingRow) {
+      const tabFields = this.pickTabConfigPayload(payload);
+      const merged = this.clientWiseLeadsConfigRepository.merge(existingRow, {
+        ...tabFields,
         client_wise_id: commonConfig.id,
-        has_extra_steps: this.resolveHasExtraStepsFlag(payload, existing.has_extra_steps),
       });
+      merged.has_extra_steps = this.resolveHasExtraStepsFlag(
+        payload,
+        existingRow.has_extra_steps,
+      );
       const saved = await this.clientWiseLeadsConfigRepository.save(merged);
       await this.replaceStepGroup(commonConfig.id, 'leads', 'normal', payload.normal_steps);
       await this.replaceStepGroup(commonConfig.id, 'leads', 'advanced', payload.advanced_steps);
       await this.replaceStepGroup(commonConfig.id, 'leads', 'extra', payload.extra_steps);
       return saved;
     }
+    const tabFields = this.pickTabConfigPayload(payload);
     const created = this.clientWiseLeadsConfigRepository.create({
-      ...payload,
+      ...tabFields,
       client_wise_id: commonConfig.id,
       filters: payload.filters ?? [],
       is_advance_filters: payload.is_advance_filters ?? false,
-      has_extra_steps: this.resolveHasExtraStepsFlag(payload, false),
       is_active: payload.is_active ?? true,
     });
+    created.has_extra_steps = this.resolveHasExtraStepsFlag(payload, false);
     const saved = await this.clientWiseLeadsConfigRepository.save(created);
     await this.replaceStepGroup(commonConfig.id, 'leads', 'normal', payload.normal_steps);
     await this.replaceStepGroup(commonConfig.id, 'leads', 'advanced', payload.advanced_steps);
@@ -224,31 +265,38 @@ export class ClientWiseService {
       );
     }
 
-    const existing = await this.getSummaryConfig(
-      payload.client_id,
-      payload.year,
-      payload.config_id,
-    );
-    if (existing) {
-      const merged = this.clientWiseSummaryConfigRepository.merge(existing, {
-        ...payload,
+    const existingRow = await this.clientWiseSummaryConfigRepository.findOne({
+      where: {
+        client_id: payload.client_id,
+        year: payload.year,
+        config_id: payload.config_id,
+      },
+    });
+    if (existingRow) {
+      const tabFields = this.pickTabConfigPayload(payload);
+      const merged = this.clientWiseSummaryConfigRepository.merge(existingRow, {
+        ...tabFields,
         client_wise_id: commonConfig.id,
-        has_extra_steps: this.resolveHasExtraStepsFlag(payload, existing.has_extra_steps),
       });
+      merged.has_extra_steps = this.resolveHasExtraStepsFlag(
+        payload,
+        existingRow.has_extra_steps,
+      );
       const saved = await this.clientWiseSummaryConfigRepository.save(merged);
       await this.replaceStepGroup(commonConfig.id, 'summary', 'normal', payload.normal_steps);
       await this.replaceStepGroup(commonConfig.id, 'summary', 'advanced', payload.advanced_steps);
       await this.replaceStepGroup(commonConfig.id, 'summary', 'extra', payload.extra_steps);
       return saved;
     }
+    const tabFields = this.pickTabConfigPayload(payload);
     const created = this.clientWiseSummaryConfigRepository.create({
-      ...payload,
+      ...tabFields,
       client_wise_id: commonConfig.id,
       filters: payload.filters ?? [],
       is_advance_filters: payload.is_advance_filters ?? false,
-      has_extra_steps: this.resolveHasExtraStepsFlag(payload, false),
       is_active: payload.is_active ?? true,
     });
+    created.has_extra_steps = this.resolveHasExtraStepsFlag(payload, false);
     const saved = await this.clientWiseSummaryConfigRepository.save(created);
     await this.replaceStepGroup(commonConfig.id, 'summary', 'normal', payload.normal_steps);
     await this.replaceStepGroup(commonConfig.id, 'summary', 'advanced', payload.advanced_steps);
