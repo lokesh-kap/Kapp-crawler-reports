@@ -788,17 +788,17 @@ export class ScrapeSchedulerService implements OnModuleInit {
       );
     }
 
-    this.logger.log(`NPF Funnel ${trigger} scrape finished. Now triggering report...`);
-
-    // After all scraping is done, trigger the report generation and mailing
-    try {
-      await this.reportService.generateAndSendReport();
-      this.logger.log(`NPF Funnel ${trigger} report sent successfully`);
-    } catch (err) {
-      this.logger.error(
-        `NPF Funnel ${trigger} report generation failed`,
-        err instanceof Error ? err.stack : undefined,
-      );
-    }
+    this.logger.log(`NPF Funnel ${trigger} scrape finished.`);
+    // Auto report after scrape intentionally disabled.
+    // Report will be sent by dedicated scheduler (e.g. 10AM cron).
+    // try {
+    //   await this.reportService.generateAndSendReport();
+    //   this.logger.log(`NPF Funnel ${trigger} report sent successfully`);
+    // } catch (err) {
+    //   this.logger.error(
+    //     `NPF Funnel ${trigger} report generation failed`,
+    //     err instanceof Error ? err.stack : undefined,
+    //   );
+    // }
   }
 }
