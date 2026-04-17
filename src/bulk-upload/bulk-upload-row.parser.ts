@@ -25,6 +25,60 @@ function requireString(
   return v;
 }
 
+function normalizeDateToken(raw: string): string {
+  const value = raw.trim();
+  if (!value) return value;
+
+  // Already numeric DD-MM-YYYY
+  const ddmmyyyy = value.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (ddmmyyyy) {
+    const day = ddmmyyyy[1].padStart(2, '0');
+    const month = ddmmyyyy[2].padStart(2, '0');
+    const year = ddmmyyyy[3];
+    return `${day}-${month}-${year}`;
+  }
+
+  // Convert DD-MMM-YYYY (e.g. 11-feb-2026) to DD-MM-YYYY
+  const ddMonYyyy = value.match(/^(\d{1,2})-([a-zA-Z]{3,9})-(\d{4})$/);
+  if (!ddMonYyyy) return value;
+
+  const day = ddMonYyyy[1].padStart(2, '0');
+  const mon = ddMonYyyy[2].toLowerCase();
+  const year = ddMonYyyy[3];
+
+  const monthMap: Record<string, string> = {
+    jan: '01',
+    january: '01',
+    feb: '02',
+    february: '02',
+    mar: '03',
+    march: '03',
+    apr: '04',
+    april: '04',
+    may: '05',
+    jun: '06',
+    june: '06',
+    jul: '07',
+    july: '07',
+    aug: '08',
+    august: '08',
+    sep: '09',
+    sept: '09',
+    september: '09',
+    oct: '10',
+    october: '10',
+    nov: '11',
+    november: '11',
+    dec: '12',
+    december: '12',
+  };
+
+  const month = monthMap[mon];
+  if (!month) return value;
+
+  return `${day}-${month}-${year}`;
+}
+
 function requirePositiveInt(
   r: Record<string, unknown>,
   key: string,
@@ -49,11 +103,34 @@ export type ParseBulkRowResult =
  * with explicit errors when null/empty.
  */
 export function parseBulkUploadRow(raw: unknown): ParseBulkRowResult {
-  if (raw === null || raw === undefined || typeof raw !== 'object' || Array.isArray(raw)) {
+  let candidate: unknown = raw;
+  if (typeof candidate === 'string') {
+    try {
+      candidate = JSON.parse(candidate);
+    } catch {
+      return { ok: false, message: 'Invalid row: expected an object' };
+    }
+  }
+
+  if (Array.isArray(candidate)) {
+    const looksLikeEntries = candidate.every(
+      (item) =>
+        Array.isArray(item) &&
+        item.length === 2 &&
+        typeof item[0] === 'string',
+    );
+    if (looksLikeEntries) {
+      candidate = Object.fromEntries(candidate as [string, unknown][]);
+    } else {
+      return { ok: false, message: 'Invalid row: expected an object' };
+    }
+  }
+
+  if (candidate === null || candidate === undefined || typeof candidate !== 'object') {
     return { ok: false, message: 'Invalid row: expected an object' };
   }
 
-  const r = raw as Record<string, unknown>;
+  const r = candidate as Record<string, unknown>;
 
   if (isNullish(r.client_name)) {
     return { ok: false, message: 'client_name is required' };
@@ -102,7 +179,9 @@ export function parseBulkUploadRow(raw: unknown): ParseBulkRowResult {
   if (client_source) row.client_source = client_source;
 
   const date_to = str(r, 'date_to');
-  if (date_to) row.date_to = date_to;
+  if (date_to) row.date_to = normalizeDateToken(date_to);
+
+  row.date_from = normalizeDateToken(row.date_from);
 
   return { ok: true, row };
 }

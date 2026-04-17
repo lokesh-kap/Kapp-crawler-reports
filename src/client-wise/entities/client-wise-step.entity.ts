@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 import { ClientWiseEntity } from './client-wise.entity';
 
-export type StepConfigType = 'leads' | 'summary';
+export type StepConfigType = 'leads' | 'summary' | 'npf_funnel';
 export type StepGroupType = 'normal' | 'advanced' | 'extra';
 export type StepActionType =
   | 'click'

@@ -1,0 +1,209 @@
+client_id,client_wise_id,status,filter_applied,message,occurred_at
+7050168,15,warning_retry_success,N/A,Retry success,15-04-2026 19:30:34
+7030296,18,warning_retry_success,N/A,Retry success,15-04-2026 19:31:12
+7042257,19,warning_retry_success,N/A,Retry success,15-04-2026 19:31:59
+7032946,21,warning_retry_success,N/A,Retry success,15-04-2026 19:32:47
+7042325,24,warning_retry_success,N/A,Retry success,15-04-2026 19:33:37
+7034181,25,warning_retry_success,N/A,Retry success,15-04-2026 19:34:34
+7037963,31,warning_retry_success,N/A,Retry success,15-04-2026 20:11:23
+7038507,32,warning_retry_success,N/A,Retry success,15-04-2026 20:12:14
+7050096,38,warning_retry_success,N/A,Retry success,15-04-2026 20:13:03
+7051156,39,warning_retry_success,N/A,Retry success,15-04-2026 20:13:52
+7042543,41,warning_retry_success,N/A,Retry success,15-04-2026 20:14:44
+7004093,42,warning_retry_success,N/A,Retry success,15-04-2026 20:15:34
+7004254,43,warning_retry_success,N/A,Retry success,15-04-2026 20:16:26
+7004326,44,warning_retry_success,N/A,Retry success,15-04-2026 20:17:16
+7005328,46,warning_retry_success,N/A,Retry success,15-04-2026 20:17:57
+7042563,47,warning_retry_success,N/A,Retry success,15-04-2026 20:18:40
+7050366,52,warning_retry_success,N/A,Retry success,15-04-2026 20:19:33
+7050952,53,warning_retry_success,N/A,Retry success,15-04-2026 20:20:15
+7042605,55,warning_retry_success,N/A,Retry success,15-04-2026 20:22:13
+7005955,58,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 20:22:18
+7004685,59,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 20:22:23
+7042589,60,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 20:22:28
+7050185,63,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 20:22:33
+7050804,64,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 20:22:38
+7050097,67,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 20:22:43
+7006265,68,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 20:22:48
+7008395,69,warning_retry_success,N/A,Retry success,15-04-2026 20:23:45
+7050123,70,warning_retry_success,N/A,Retry success,15-04-2026 20:24:42
+7051154,72,warning_retry_success,N/A,Retry success,15-04-2026 20:25:32
+7051158,75,warning_retry_success,N/A,Retry success,15-04-2026 20:27:13
+7050147,76,warning_retry_success,N/A,Retry success,15-04-2026 20:28:07
+7011593,77,warning_retry_success,N/A,Retry success,15-04-2026 20:28:56
+7011635,78,warning_retry_success,N/A,Retry success,15-04-2026 20:29:56
+7014736,79,warning_retry_success,N/A,Retry success,15-04-2026 20:30:50
+7050090,81,warning_retry_success,N/A,Retry success,15-04-2026 20:31:39
+7042774,84,warning_retry_success,N/A,Retry success,15-04-2026 20:32:25
+7042805,85,warning_retry_success,N/A,Retry success,15-04-2026 20:33:14
+7005641,86,warning_retry_success,N/A,Retry success,15-04-2026 20:34:06
+7016350,87,warning_retry_success,N/A,Retry success,15-04-2026 20:34:55
+7042884,88,warning_retry_success,N/A,Retry success,15-04-2026 20:35:44
+7050088,89,warning_retry_success,N/A,Retry success,15-04-2026 20:36:34
+7050091,93,warning_retry_success,N/A,Retry success,15-04-2026 20:37:25
+7052092,94,warning_retry_success,N/A,Retry success,15-04-2026 20:38:17
+7043000,97,warning_retry_success,N/A,Retry success,15-04-2026 20:39:12
+7043003,98,warning_retry_success,N/A,Retry success,15-04-2026 20:40:05
+7045618,100,warning_retry_success,N/A,Retry success,15-04-2026 20:40:53
+7043123,102,warning_retry_success,N/A,Retry success,15-04-2026 20:41:42
+7043045,104,warning_retry_success,N/A,Retry success,15-04-2026 20:42:30
+7050130,105,warning_retry_success,N/A,Retry success,15-04-2026 20:43:20
+7043259,109,warning_retry_success,N/A,Retry success,15-04-2026 20:44:09
+7019167,111,warning_retry_success,N/A,Retry success,15-04-2026 20:44:59
+7004509,113,warning_retry_success,N/A,Retry success,15-04-2026 20:45:46
+7054179,114,warning_retry_success,N/A,Retry success,15-04-2026 20:46:26
+7054075,115,warning_retry_success,N/A,Retry success,15-04-2026 20:47:05
+7054182,116,warning_retry_success,N/A,Retry success,15-04-2026 20:48:45
+7050982,117,warning_retry_success,N/A,Retry success,15-04-2026 20:49:25
+7053534,121,warning_retry_success,N/A,Retry success,15-04-2026 20:50:14
+7042489,122,warning_retry_success,N/A,Retry success,15-04-2026 20:51:02
+7009020,124,warning_retry_success,N/A,Retry success,15-04-2026 20:51:41
+7017335,125,warning_retry_success,N/A,Retry success,15-04-2026 20:53:22
+7017553,126,warning_retry_success,N/A,Retry success,15-04-2026 20:54:08
+7025055,128,warning_retry_success,N/A,Retry success,15-04-2026 20:54:48
+7043008,129,warning_retry_success,N/A,Retry success,15-04-2026 20:55:30
+7043111,130,warning_retry_success,N/A,Retry success,15-04-2026 20:56:21
+7043148,131,warning_retry_success,N/A,Retry success,15-04-2026 20:57:58
+7042268,132,warning_retry_success,N/A,Retry success,15-04-2026 20:58:44
+7032533,134,warning_retry_success,N/A,Retry success,15-04-2026 21:01:27
+7037246,135,warning_retry_success,N/A,Retry success,15-04-2026 21:02:18
+7050846,138,warning_retry_success,N/A,Retry success,15-04-2026 21:03:08
+7004951,140,warning_retry_success,N/A,Retry success,15-04-2026 21:03:56
+7050127,142,warning_retry_success,N/A,Retry success,15-04-2026 21:04:38
+7015717,146,warning_retry_success,N/A,Retry success,15-04-2026 21:05:27
+7053549,149,warning_retry_success,N/A,Retry success,15-04-2026 21:06:19
+7050109,153,warning_retry_success,N/A,Retry success,15-04-2026 21:07:07
+7041344,154,warning_retry_success,N/A,Retry success,15-04-2026 21:07:56
+7044494,155,warning_retry_success,N/A,Retry success,15-04-2026 21:09:43
+7031544,157,warning_retry_success,N/A,Retry success,15-04-2026 21:10:36
+7037966,159,warning_retry_success,N/A,Retry success,15-04-2026 21:11:26
+7050726,162,warning_retry_success,N/A,Retry success,15-04-2026 21:12:14
+7052702,163,warning_retry_success,N/A,Retry success,15-04-2026 21:13:01
+7010229,164,warning_retry_success,N/A,Retry success,15-04-2026 21:13:39
+7051966,166,warning_retry_success,N/A,Retry success,15-04-2026 21:14:28
+7042564,167,warning_retry_success,N/A,Retry success,15-04-2026 21:15:10
+7005793,168,warning_retry_success,N/A,Retry success,15-04-2026 21:16:42
+7005965,169,warning_retry_success,N/A,Retry success,15-04-2026 21:17:31
+7004704,171,warning_retry_success,N/A,Retry success,15-04-2026 21:18:20
+7042695,175,warning_retry_success,N/A,Retry success,15-04-2026 21:19:09
+7008848,176,warning_retry_success,N/A,Retry success,15-04-2026 21:19:51
+7042719,178,warning_retry_success,N/A,Retry success,15-04-2026 21:21:28
+7042901,182,warning_retry_success,N/A,Retry success,15-04-2026 21:22:11
+7020933,183,warning_retry_success,N/A,Retry success,15-04-2026 21:23:03
+7049507,188,warning_retry_success,N/A,Retry success,15-04-2026 21:23:43
+7050444,191,warning_retry_success,N/A,Retry success,15-04-2026 21:24:23
+7043350,193,warning_retry_success,N/A,Retry success,15-04-2026 21:25:03
+7044103,194,warning_retry_success,N/A,Retry success,15-04-2026 21:25:51
+7030030,195,warning_retry_success,N/A,Retry success,15-04-2026 21:26:42
+7033115,196,warning_retry_success,N/A,Retry success,15-04-2026 21:27:31
+7033960,198,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:27:36
+7029481,199,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:27:41
+7042407,200,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:27:46
+7035931,201,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:27:51
+7050815,203,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:27:56
+7014402,204,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:28:01
+7051255,206,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:28:06
+7053041,207,warning_retry_success,N/A,Retry success,15-04-2026 21:30:23
+7005714,209,warning_retry_success,N/A,Retry success,15-04-2026 21:31:56
+7007440,210,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:32:01
+7016876,213,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:32:06
+7052420,216,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:32:11
+7050157,217,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:32:16
+7028744,219,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:32:21
+7050488,220,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:32:26
+7049690,222,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:32:31
+7038720,224,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:32:36
+7041375,227,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:32:41
+7041842,228,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:32:46
+7043288,229,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:32:51
+7500042,230,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:32:56
+7042817,235,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:33:01
+7008672,236,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:33:06
+7022961,239,warning_retry_success,N/A,Retry success,15-04-2026 21:35:16
+7037219,240,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:35:21
+7053539,241,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:35:27
+7017346,242,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:35:32
+7048083,243,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:35:37
+7053536,246,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:35:42
+7034171,249,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:35:47
+7052411,251,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:35:52
+7053295,252,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:35:57
+7023960,253,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:36:02
+7018445,254,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:36:07
+7020344,255,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:36:12
+7021698,256,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:36:17
+7050733,257,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:36:22
+7051233,263,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:36:27
+7054078,272,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:36:32
+7036262,273,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:36:37
+7014867,274,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:36:42
+7039107,277,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:36:47
+7007176,278,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:36:52
+7007053,280,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:36:57
+7050124,284,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:37:02
+7043176,287,warning_retry_failed,N/A,Connection terminated due to connection timeout,15-04-2026 21:37:07
+7002876,288,warning_retry_success,N/A,Retry success,15-04-2026 21:39:30
+7042404,289,warning_retry_success,N/A,Retry success,15-04-2026 21:41:15
+7042285,290,warning_retry_success,N/A,Retry success,15-04-2026 21:42:09
+7054198,293,warning_retry_success,N/A,Retry success,15-04-2026 21:42:54
+7037772,294,warning_retry_success,N/A,Retry success,15-04-2026 21:44:37
+7025804,297,warning_retry_success,N/A,Retry success,15-04-2026 21:46:19
+7021468,298,warning_retry_success,N/A,Retry success,15-04-2026 21:47:10
+7051378,299,warning_retry_success,N/A,Retry success,15-04-2026 21:47:52
+7005784,301,warning_retry_success,N/A,Retry success,15-04-2026 21:49:37
+7054185,302,warning_retry_success,N/A,Retry success,15-04-2026 21:50:18
+7039522,303,warning_retry_success,N/A,Retry success,15-04-2026 21:51:59
+7042815,308,warning_retry_success,N/A,Retry success,15-04-2026 21:53:42
+7005955,58,warning_retry_second_success,N/A,Second retry success,15-04-2026 21:54:21
+7004685,59,warning_retry_second_success,N/A,Second retry success,15-04-2026 21:55:21
+7042589,60,warning_retry_second_success,N/A,Second retry success,15-04-2026 21:57:03
+7050185,63,warning_retry_second_success,N/A,Second retry success,15-04-2026 21:57:53
+7050804,64,warning_retry_second_success,N/A,Second retry success,15-04-2026 21:58:44
+7050097,67,warning_retry_second_success,N/A,Second retry success,15-04-2026 21:59:37
+7006265,68,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:00:30
+7033960,198,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:01:30
+7029481,199,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:02:10
+7042407,200,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:02:49
+7035931,201,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:04:30
+7050815,203,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:06:05
+7014402,204,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:07:52
+7051255,206,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:08:30
+7007440,210,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:09:24
+7016876,213,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:10:28
+7052420,216,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:11:30
+7050157,217,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:12:22
+7028744,219,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:13:09
+7050488,220,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:14:00
+7049690,222,warning_retry_second_success,N/A,Second retry success,15-04-2026 22:14:59
+7038720,224,warning_retry_second_failed,N/A,"page.goto: net::ERR_TIMED_OUT at https://publisher.in8.nopaperforms.com/lead/details
+Call log:
+[2m  - navigating to ""https://publisher.in8.nopaperforms.com/lead/details"", waiting until ""load""[22m
+",15-04-2026 22:16:00
+7041375,227,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:16:05
+7041842,228,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:16:10
+7043288,229,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:16:15
+7500042,230,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:16:20
+7042817,235,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:16:25
+7008672,236,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:16:30
+7037219,240,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:16:35
+7053539,241,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:16:40
+7017346,242,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:16:45
+7048083,243,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:16:50
+7053536,246,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:16:55
+7034171,249,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:17:00
+7052411,251,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:17:05
+7053295,252,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:17:10
+7023960,253,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:17:15
+7018445,254,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:17:20
+7020344,255,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:17:25
+7021698,256,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:17:30
+7050733,257,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:17:35
+7051233,263,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:17:40
+7054078,272,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:17:45
+7036262,273,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:17:50
+7014867,274,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:17:55
+7039107,277,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:18:00
+7007176,278,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:18:05
+7007053,280,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:18:10
+7050124,284,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:18:15
+7043176,287,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:18:20

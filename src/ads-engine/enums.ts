@@ -1,0 +1,38 @@
+export enum AdsProvider {
+  GOOGLE = 'google',
+  META = 'meta',
+  BING = 'bing',
+}
+
+export enum AccountStatus {
+  ENABLED = 'ENABLED',
+  PAUSED = 'PAUSED',
+  DEACTIVATED = 'DEACTIVATED',
+  REVOKED = 'REVOKED',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export enum CampaignStatus {
+  ENABLED = 'ENABLED',
+  PAUSED = 'PAUSED',
+  REMOVED = 'REMOVED',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export enum CampaignType {
+  SEARCH = 'SEARCH',
+  DISPLAY = 'DISPLAY',
+  VIDEO = 'VIDEO',
+  PERFORMANCE_MAX = 'PERFORMANCE_MAX',
+  MULTI_CHANNEL = 'MULTI_CHANNEL',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export enum BiddingStrategy {
+  MANUAL_CPC = 'MANUAL_CPC',
+  MAXIMIZE_CONVERSIONS = 'MAXIMIZE_CONVERSIONS',
+  MAXIMIZE_CONVERSION_VALUE = 'MAXIMIZE_CONVERSION_VALUE',
+  TARGET_CPA = 'TARGET_CPA',
+  TARGET_ROAS = 'TARGET_ROAS',
+  UNKNOWN = 'UNKNOWN',
+}

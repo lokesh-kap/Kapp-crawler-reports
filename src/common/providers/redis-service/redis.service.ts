@@ -11,16 +11,26 @@ export class RedisService implements OnModuleDestroy {
 
   constructor() {
     this.redis = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379', {
-      maxRetriesPerRequest: null,
+      maxRetriesPerRequest: 0, // Stop BullMQ from blocking startup
       enableReadyCheck: false,
+      lazyConnect: true, // Don't connect until used
+      retryStrategy: (times) => {
+        // Only retry every 30 seconds to keep logs clean
+        return Math.min(times * 50, 30000);
+      }
     });
 
     this.redis.on('error', (err) => {
-      console.error('Redis connection error:', err);
+      // Log as a warning instead of a crash-inducing error
+      if ((err as any).code === 'ECONNREFUSED') {
+        // Silent warning for dev
+      } else {
+        console.error('Redis connection error:', err);
+      }
     });
 
     this.redis.on('connect', () => {
-      console.log('Redis connected successfully');
+      console.log('✅ Redis connected successfully');
     });
   }
 

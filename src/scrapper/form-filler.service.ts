@@ -147,7 +147,15 @@ export class FormFillerService {
   }
 
   private async fillText(locator: Locator, value: string | boolean | undefined, clear: boolean): Promise<void> {
-    const text = String(value ?? '');
+    let text = String(value ?? '');
+    
+    // Fix for passwords containing escape sequences like \v (Vertical Tab)
+    // We want the literal characters '\' and 'v' to be typed.
+    text = text.replace(/\v/g, '\\v')
+               .replace(/\n/g, '\\n')
+               .replace(/\r/g, '\\r')
+               .replace(/\t/g, '\\t');
+
     if (clear) {
       await locator.fill(text);
       return;

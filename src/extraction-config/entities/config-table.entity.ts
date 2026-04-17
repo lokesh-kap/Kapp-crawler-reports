@@ -7,7 +7,7 @@ import {
 } from 'typeorm';
 import { ConfigTableFieldEntity } from './config-table-field.entity';
 
-export type ExtractionConfigType = 'leads' | 'summary';
+export type ExtractionConfigType = 'leads' | 'summary' | 'npf_funnel';
 
 @Entity('config_tables')
 export class ConfigTableEntity {

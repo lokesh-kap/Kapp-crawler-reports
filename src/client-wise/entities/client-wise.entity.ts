@@ -13,7 +13,7 @@ import {
 @Entity('client_wise')
 export class ClientWiseEntity {
   @PrimaryGeneratedColumn('increment')
-  id: number;
+  id: number; 
 
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;

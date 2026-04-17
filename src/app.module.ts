@@ -11,8 +11,13 @@ import { ProviderConfigModule } from './provider-config/provider-config.module';
 import { ClientWiseModule } from './client-wise/client-wise.module';
 import { ExtractionConfigModule } from './extraction-config/extraction-config.module';
 import { BulkUploadModule } from './bulk-upload/bulk-upload.module';
+import { AdsEngineModule } from './ads-engine/ads-engine.module';
+import { AppMailerModule } from './common/mailer/mailer.module';
+import { CronModule } from './cron/cron.module';
+import { ReportsModule } from './reports/reports.module';
 
 dotenv.config();
+
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -25,19 +30,15 @@ dotenv.config();
       autoLoadEntities: true,
       synchronize: false,
       logging: false,
-
-      ssl: {
-        rejectUnauthorized: false,
-      },
+      ssl: { rejectUnauthorized: false },
       extra: {
-        max: 5,                        
-        min: 0,                       
-        idleTimeoutMillis: 30000,      
-        connectionTimeoutMillis: 5000, 
-        statement_timeout: 60000,      
+        max: 5,
+        min: 0,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
+        statement_timeout: 60000,
       },
     }),
-
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     CommonModule,
@@ -46,6 +47,10 @@ dotenv.config();
     ProviderConfigModule,
     ClientWiseModule,
     BulkUploadModule,
+    AdsEngineModule,
+    AppMailerModule,
+    CronModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

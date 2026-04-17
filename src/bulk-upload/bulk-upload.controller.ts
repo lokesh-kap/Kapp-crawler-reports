@@ -7,7 +7,9 @@ export class BulkUploadController {
   constructor(private readonly bulkUploadService: BulkUploadService) {}
 
   @Post('client-wise')
-  upsertClientWise(@Body() body: BulkUploadRequestDto) {
-    return this.bulkUploadService.upsertClientWiseFromBulk(body);
+  upsertClientWise(@Body() body: any) {
+    return this.bulkUploadService.upsertClientWiseFromBulk(
+      body as BulkUploadRequestDto,
+    );
   }
 }

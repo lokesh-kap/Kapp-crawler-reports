@@ -98,7 +98,7 @@ export class ExtractionConfigService {
     return this.configTableRepository.findOne({ where: { id } });
   }
 
-  getTableByConfigId(configId: number, configType?: 'leads' | 'summary') {
+  getTableByConfigId(configId: number, configType?: 'leads' | 'summary' | 'npf_funnel') {
     return this.configTableRepository.findOne({
       where: {
         config_id: configId,
@@ -115,7 +115,7 @@ export class ExtractionConfigService {
     });
   }
 
-  async getActiveTableByConfig(configType: 'leads' | 'summary', configId: number) {
+  async getActiveTableByConfig(configType: 'leads' | 'summary' | 'npf_funnel', configId: number) {
     return this.configTableRepository.findOne({
       where: {
         config_type: configType,

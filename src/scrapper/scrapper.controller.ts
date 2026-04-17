@@ -15,5 +15,10 @@ export class ScrapperController {
   scrapeSummary(@Body() dto: ScrapeTargetDto) {
     return this.scrapperService.scrapeSummary(dto);
   }
+
+  @Post('npf-funnel')
+  scrapeNpfFunnel(@Body() dto: ScrapeTargetDto) {
+    return this.scrapperService.scrapeNpfFunnelData(dto);
+  }
 }
 

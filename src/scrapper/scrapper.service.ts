@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { MoreThanOrEqual, Repository } from 'typeorm';
 import { ClientWiseEntity } from '../client-wise/entities/client-wise.entity';
 import { ClientWiseLeadsConfigEntity } from '../client-wise/entities/client-wise-leads-config.entity';
 import { ClientWiseSummaryConfigEntity } from '../client-wise/entities/client-wise-summary-config.entity';
 import { ClientWiseLeadsDataEntity } from './entities/client-wise-leads-data.entity';
 import { ClientWiseSummaryDataEntity } from './entities/client-wise-summary-data.entity';
+import { NpfFunnelSummaryEntity } from './entities/npf-funnel-summary.entity';
 import { ScrapingDataService, type ScrapeFieldConfig, type ScrapeListOptions, type ScrapeSchema, type ScrapeFieldConfig as ScrapeField } from './scraping-data.service';
 import {
   FormFillerService,
@@ -25,19 +26,61 @@ import { DynamicExtractionService } from './dynamic-extraction.service';
 import { QueueManagerService } from '../common/providers/queue-service/queue-manager.service';
 import { WorkerManagerService } from '../common/providers/queue-service/worker-manager.service';
 import { Job } from 'bullmq';
+import { createHash } from 'crypto';
 
-type TargetKind = 'leads' | 'summary';
+type TargetKind = 'leads' | 'summary' | 'npf_funnel';
 type StepGroup = 'normal' | 'advanced' | 'extra';
+export type NpfScrapeWarning = {
+  client_id: number;
+  client_wise_id: number;
+  status: 'filter_not_found' | 'metrics_not_found' | 'dom_fallback_incomplete';
+  filter_applied: string;
+  message: string;
+  occurred_at: string;
+};
+type NpfFilterApplyResult =
+  | { applied: true }
+  | { applied: false; reason: 'filter_not_found' | 'dom_fallback_incomplete'; message: string };
+type NpfApiSummaryState = {
+  seq: number;
+  latest: Record<string, unknown> | null;
+  latestPayloadHash: string | null;
+  latestPayloadSize: number;
+  currentPassLabel: string | null;
+  byPass: Map<
+    string,
+    {
+      seq: number;
+      latest: Record<string, unknown> | null;
+      payloadHash: string | null;
+      payloadSize: number;
+    }
+  >;
+};
 type ScrapeWriteJob = {
   target: TargetKind;
   rows: Record<string, unknown>[];
   meta: { client_id: number; year: number; user_id: number; config_id: number };
+};
+type ApplyFiltersOptions = {
+  clientId?: number;
+  throwOnFailure?: boolean;
+  contextLabel?: string;
+};
+type ApplyFiltersResult = {
+  appliedCount: number;
+  failedCount: number;
+  failedItems: string[];
 };
 
 @Injectable()
 export class ScrapperService implements OnModuleInit {
   private readonly logger = new Logger(ScrapperService.name);
   private static readonly WRITE_QUEUE_NAME = 'scrape-db-write-queue';
+  private readonly npfAdaptivePenaltyByClient = new Map<
+    number,
+    { refresh: number; metrics: number }
+  >();
 
   constructor(
     @InjectRepository(ClientWiseEntity)
@@ -52,6 +95,8 @@ export class ScrapperService implements OnModuleInit {
     private readonly summaryDataRepository: Repository<ClientWiseSummaryDataEntity>,
     @InjectRepository(ClientWiseStepEntity)
     private readonly stepRepository: Repository<ClientWiseStepEntity>,
+    @InjectRepository(NpfFunnelSummaryEntity)
+    private readonly npfFunnelRepository: Repository<NpfFunnelSummaryEntity>,
     private readonly playwrightService: PlaywrightService,
     private readonly formFillerService: FormFillerService,
     private readonly scrapingDataService: ScrapingDataService,
@@ -60,7 +105,163 @@ export class ScrapperService implements OnModuleInit {
     private readonly dynamicExtractionService: DynamicExtractionService,
     private readonly queueManagerService: QueueManagerService,
     private readonly workerManagerService: WorkerManagerService,
-  ) {}
+  ) { }
+
+  private getAdaptiveNpfWaitMs(
+    kind: 'refresh' | 'metrics',
+    baseMs: number,
+    clientId?: number,
+  ): number {
+    if (!clientId) return baseMs;
+    const penalty = this.npfAdaptivePenaltyByClient.get(clientId)?.[kind] ?? 0;
+    const stepMs = this.getEnvInt('SCRAPER_NPF_ADAPTIVE_STEP_MS', 15000);
+    const maxMs = this.getEnvInt('SCRAPER_NPF_ADAPTIVE_MAX_WAIT_MS', 180000);
+    return Math.min(maxMs, baseMs + penalty * stepMs);
+  }
+
+  private updateAdaptiveNpfPenalty(
+    kind: 'refresh' | 'metrics',
+    timedOut: boolean,
+    clientId?: number,
+  ): void {
+    if (!clientId) return;
+    const current = this.npfAdaptivePenaltyByClient.get(clientId) ?? {
+      refresh: 0,
+      metrics: 0,
+    };
+    const next = { ...current };
+    if (timedOut) {
+      next[kind] = Math.min(5, next[kind] + 1);
+    } else {
+      next[kind] = Math.max(0, next[kind] - 1);
+    }
+    this.npfAdaptivePenaltyByClient.set(clientId, next);
+  }
+
+  private withClientContext(message: string, clientId?: number): string {
+    return `[client_id=${clientId ?? 'n/a'}] ${message}`;
+  }
+
+  private npfWarn(message: string, clientId?: number): void {
+    this.logger.warn(this.withClientContext(message, clientId));
+  }
+
+  private npfError(message: string, clientId?: number, stack?: string): void {
+    this.logger.error(this.withClientContext(message, clientId), stack);
+  }
+
+  private async waitForFixedLoaderToClear(
+    page: Page,
+    timeoutMs: number,
+    clientId?: number,
+    context = 'unknown',
+  ): Promise<boolean> {
+    const pollMs = 400;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const loaderVisible = await page
+        .evaluate(() => {
+          return Array.from(
+            document.querySelectorAll('.fixed-loader, .ng-spinner-loader'),
+          ).some((n) => {
+            const el = n as HTMLElement;
+            return !!(el.offsetParent || el.getClientRects().length);
+          });
+        })
+        .catch(() => false);
+      if (!loaderVisible) return true;
+      await page.waitForTimeout(pollMs);
+    }
+
+    this.npfWarn(
+      `Loader remained visible for ${timeoutMs}ms (${context}); interactions may be blocked.`,
+      clientId,
+    );
+    return false;
+  }
+
+  private async isLikelyLoginPage(page: Page): Promise<boolean> {
+    const url = (page.url() || '').toLowerCase();
+    if (url.includes('login') || url.includes('signin') || url.includes('sign-in')) {
+      return true;
+    }
+    const passwordInputs = await page
+      .locator("input[type='password']")
+      .count()
+      .catch(() => 0);
+    return passwordInputs > 0;
+  }
+
+  private async ensureNpfLeadViewReady(
+    page: Page,
+    dto: ScrapeTargetDto,
+    clientWise: ClientWiseEntity,
+    leadUrl: string,
+  ): Promise<void> {
+    await page.goto(leadUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    if (await this.isLikelyLoginPage(page)) {
+      this.npfWarn(
+        'Detected logged-out state after reload; re-authenticating before continuing.',
+        clientWise.client_id,
+      );
+      await this.login(page, dto, clientWise);
+      await page.goto(leadUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    }
+    await page
+      .waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 20000 })
+      .catch(() => null);
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+    await this.waitForFixedLoaderToClear(
+      page,
+      this.getEnvInt('SCRAPER_NPF_LOADER_WAIT_MS', 15000),
+      clientWise.client_id,
+      'ensureNpfLeadViewReady',
+    );
+  }
+
+  private async applyNpfBaseFiltersWithRecovery(
+    page: Page,
+    dto: ScrapeTargetDto,
+    clientWise: ClientWiseEntity,
+    leadsConfig: ClientWiseLeadsConfigEntity,
+  ): Promise<void> {
+    const maxReloadRetries = this.getEnvInt('SCRAPER_NPF_FILTER_RELOAD_RETRIES', 1);
+    for (let attempt = 0; attempt <= maxReloadRetries; attempt += 1) {
+      try {
+        await this.applyFilters(page, leadsConfig.filters ?? [], {
+          clientId: clientWise.client_id,
+          throwOnFailure: true,
+          contextLabel: `npf_base_filters_attempt_${attempt + 1}`,
+        });
+        await page.click('body', { force: true }).catch(() => null);
+        const searchBtn = page
+          .locator("//button[contains(., 'Search')] | //a[contains(., 'Search')]")
+          .first();
+        if (await searchBtn.isVisible()) {
+          await searchBtn.click({ force: true });
+          await page
+            .waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 20000 })
+            .catch(() => null);
+          await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+        }
+        return;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        this.npfWarn(
+          `Base filters failed on attempt ${attempt + 1}/${maxReloadRetries + 1}: ${errorMessage}`,
+          clientWise.client_id,
+        );
+        if (attempt >= maxReloadRetries) {
+          throw err;
+        }
+        this.npfWarn(
+          `Reloading lead view and retrying base filters (attempt ${attempt + 2}/${maxReloadRetries + 1})`,
+          clientWise.client_id,
+        );
+        await this.ensureNpfLeadViewReady(page, dto, clientWise, leadsConfig.url);
+      }
+    }
+  }
 
   onModuleInit() {
     this.queueManagerService.getQueue(ScrapperService.WRITE_QUEUE_NAME);
@@ -69,24 +270,1057 @@ export class ScrapperService implements OnModuleInit {
         queueName: ScrapperService.WRITE_QUEUE_NAME,
         concurrency: 3,
         processor: async (job: Job<ScrapeWriteJob>) => {
-          const payload = job.data;
-          const entities = payload.rows.map((row) =>
-            this.mapLeadOrSummaryRowToEntity(payload.target, row, payload.meta),
-          );
-          if (!entities.length) return { saved: 0 };
-          if (payload.target === 'leads') {
-            await this.leadsDataRepository.save(entities as ClientWiseLeadsDataEntity[]);
-          } else {
-            await this.summaryDataRepository.save(entities as ClientWiseSummaryDataEntity[]);
-          }
-          return { saved: entities.length };
+          return this.saveScrapedDataDirectly(job.data);
         },
       });
     }
   }
 
+  private async saveScrapedDataDirectly(payload: ScrapeWriteJob) {
+    try {
+      const entities = payload.rows.map((row) =>
+        this.mapLeadOrSummaryRowToEntity(payload.target, row, payload.meta),
+      );
+      if (!entities.length) return { saved: 0 };
+      if (payload.target === 'leads') {
+        await this.leadsDataRepository.save(entities as ClientWiseLeadsDataEntity[]);
+      } else if (payload.target === 'summary') {
+        await this.summaryDataRepository.save(entities as ClientWiseSummaryDataEntity[]);
+      } else if (payload.target === 'npf_funnel') {
+        const npfEntities = entities as NpfFunnelSummaryEntity[];
+        let savedCount = 0;
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        for (const entity of npfEntities) {
+          const latest = await this.npfFunnelRepository.findOne({
+            where: {
+              client_id: entity.client_id,
+              year: entity.year,
+              filter_applied: entity.filter_applied,
+              funnel_source: entity.funnel_source,
+              instance_filter: entity.instance_filter,
+              created_at: MoreThanOrEqual(todayStart),
+            },
+            // Use insertion sequence to get the true previous row.
+            order: { id: 'DESC' },
+          });
+
+          const isDuplicate =
+            !!latest &&
+            latest.source === entity.source &&
+            latest.primary_leads === entity.primary_leads &&
+            latest.secondary_leads === entity.secondary_leads &&
+            latest.tertiary_leads === entity.tertiary_leads &&
+            latest.total_instances === entity.total_instances &&
+            latest.verified_leads === entity.verified_leads &&
+            latest.unverified_leads === entity.unverified_leads &&
+            latest.form_initiated === entity.form_initiated &&
+            latest.paid_applications === entity.paid_applications &&
+            latest.submit_applications === entity.submit_applications &&
+            latest.enrolments === entity.enrolments;
+
+          if (isDuplicate) {
+            this.logger.log(
+              `Skipping duplicate npf_funnel row client_id=${entity.client_id} filter=${entity.filter_applied} source=${entity.funnel_source}`,
+            );
+            continue;
+          }
+
+          await this.npfFunnelRepository.save(entity);
+          savedCount += 1;
+        }
+        this.logger.log(`✅ Directly saved ${savedCount} rows for target: ${payload.target}`);
+        return { saved: savedCount };
+      }
+      this.logger.log(`✅ Directly saved ${entities.length} rows for target: ${payload.target}`);
+      return { saved: entities.length };
+    } catch (error) {
+      this.logger.error(`Failed to save data directly for ${payload.target}: ${error.message}`, error.stack);
+      return { saved: 0, error: error.message };
+    }
+  }
+
+  /** NPF API/UI metric: missing or N/A → null; literal zero stays "0". */
+  private normalizeNpfMetricValue(value: unknown): string | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value) || Number.isNaN(value)) return null;
+      if (value === 0) return '0';
+      return Number.isInteger(value) ? String(value) : String(value);
+    }
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const lower = raw.toLowerCase();
+    if (
+      /^n\/?a$/i.test(raw) ||
+      lower === 'n.a.' ||
+      lower === 'not available' ||
+      lower === 'null' ||
+      lower === 'undefined' ||
+      lower === '-' ||
+      lower === '--' ||
+      raw === '—' ||
+      raw === '–' ||
+      lower === 'nil'
+    ) {
+      return null;
+    }
+    const cleaned = raw.replace(/,/g, '').replace(/\s+/g, '');
+    if (!cleaned) return null;
+    const num = Number(cleaned);
+    if (!Number.isNaN(num) && Number.isFinite(num)) {
+      return num === 0 ? '0' : Number.isInteger(num) ? String(num) : String(num);
+    }
+    return null;
+  }
+
+  private mapNpfApiSummaryToTotals(
+    payload: Record<string, unknown> | null,
+  ): Record<string, string | null> | null {
+    if (!payload) return null;
+    const data = (payload.data as Record<string, unknown> | undefined) ?? payload;
+    if (!data || typeof data !== 'object') return null;
+
+    return {
+      primary_leads: this.normalizeNpfMetricValue(data.primaryLeads),
+      secondary_leads: this.normalizeNpfMetricValue(data.secondaryLeads),
+      tertiary_leads: this.normalizeNpfMetricValue(data.tertiaryLeads),
+      total_instances: this.normalizeNpfMetricValue(data.totalLeads),
+      verified_leads: this.normalizeNpfMetricValue(data.verifiedLeads),
+      unverified_leads: this.normalizeNpfMetricValue(data.unverifiedLeads),
+      form_initiated: this.normalizeNpfMetricValue(data.formInitiated),
+      paid_applications: this.normalizeNpfMetricValue(data.applications),
+      submit_applications: this.normalizeNpfMetricValue(
+        data.submittedApplications ?? data.submittedApplication,
+      ),
+      enrolments: this.normalizeNpfMetricValue(data.enrolments),
+    };
+  }
+
+  private hashPayload(payload: string): string {
+    return createHash('sha1').update(payload).digest('hex').slice(0, 12);
+  }
+
+  private async isNpfNoDataVisible(page: Page): Promise<boolean> {
+    return page
+      .evaluate(() => {
+        const bodyText = (document.body?.innerText ?? '').toLowerCase();
+        return bodyText.includes('no record found') || bodyText.includes('no data found');
+      })
+      .catch(() => false);
+  }
+
+  private async saveNpfNullNoneRowAndStop(
+    clientWise: ClientWiseEntity,
+    instanceVal: string,
+    reason: string,
+  ): Promise<void> {
+    const nullTotals: Record<string, string | null> = {
+      primary_leads: null,
+      secondary_leads: null,
+      tertiary_leads: null,
+      total_instances: null,
+      verified_leads: null,
+      unverified_leads: null,
+      form_initiated: null,
+      paid_applications: null,
+      submit_applications: null,
+      enrolments: null,
+    };
+    await this.saveScrapedDataDirectly({
+      target: 'npf_funnel' as TargetKind,
+      rows: [
+        {
+          ...nullTotals,
+          data_source: 'npf_api',
+          source: 'GLOBAL',
+          filter_applied: 'None',
+          funnel_source: 'lead_view',
+          instance_filter: String(instanceVal),
+        },
+      ],
+      meta: {
+        client_id: clientWise.client_id,
+        year: clientWise.year,
+        user_id: clientWise.user_id,
+        config_id: clientWise.config_id!,
+      },
+    });
+    this.logger.log(
+      `[LEAD VIEW] No data for None filter. Saved null totals and stopped client_id=${clientWise.client_id}. Reason=${reason}`,
+    );
+  }
+
+  private async waitForNpfApiSummaryAdvance(
+    getApiSeq: () => number,
+    baselineSeq: number,
+    reason: string,
+    clientId?: number,
+  ): Promise<boolean> {
+    const maxWaitMs = this.getEnvInt('SCRAPER_NPF_API_WAIT_MS', 30000);
+    const pollMs = this.getEnvInt('SCRAPER_NPF_API_POLL_MS', 500);
+    const deadline = Date.now() + maxWaitMs;
+
+    while (Date.now() < deadline) {
+      if (getApiSeq() > baselineSeq) return true;
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+    this.npfWarn(
+      `NPF API summary did not update within ${maxWaitMs}ms for ${reason} (baseline_seq=${baselineSeq}, current_seq=${getApiSeq()})`,
+      clientId,
+    );
+    return false;
+  }
+
+  async scrapeNpfFunnelData(dto: ScrapeTargetDto, opts?: { page?: import('playwright').Page; skipLogin?: boolean }) {
+    this.logger.log(`Starting optimized NPF Funnel scrape for client_id=${dto.client_id}`);
+
+    let clientWise: ClientWiseEntity | null = null;
+    if (dto.client_wise_id) {
+      clientWise = await this.clientWiseRepository.findOne({ where: { id: dto.client_wise_id } });
+    } else {
+      clientWise = await this.clientWiseRepository.findOne({
+        where: { client_id: dto.client_id, year: dto.year },
+        order: { id: 'DESC' },
+      });
+    }
+    if (!clientWise) throw new NotFoundException('Client config not found');
+
+    const leadsConfig = await this.leadsConfigRepository.findOne({ where: { client_wise_id: clientWise.id } });
+    if (!leadsConfig) throw new NotFoundException('No NPF lead_view config found');
+
+    const browser = opts?.page ? null : await this.playwrightService.createBrowser({ useProxy: dto.use_proxy ?? false });
+    const page = opts?.page || browser!.page;
+    const warnings: NpfScrapeWarning[] = [];
+    const apiSummaryState: NpfApiSummaryState = {
+      seq: 0,
+      latest: null,
+      latestPayloadHash: null,
+      latestPayloadSize: 0,
+      currentPassLabel: null,
+      byPass: new Map(),
+    };
+    const apiSummaryListener = async (response: any) => {
+      try {
+        const req = response.request?.();
+        const method = req?.method?.();
+        const url = response.url?.() ?? '';
+        if (
+          method === 'POST' &&
+          url.includes('/publishers/v1/getLeadDetailsSummary') &&
+          response.status?.() === 200
+        ) {
+          const payload = req?.postData?.() ?? '';
+          const body = (await response.json().catch(() => null)) as
+            | Record<string, unknown>
+            | null;
+          if (body) {
+            apiSummaryState.latest = body;
+            apiSummaryState.seq += 1;
+            apiSummaryState.latestPayloadSize = payload.length;
+            apiSummaryState.latestPayloadHash = payload
+              ? this.hashPayload(payload)
+              : null;
+            const passLabel = apiSummaryState.currentPassLabel;
+            if (passLabel) {
+              apiSummaryState.byPass.set(passLabel, {
+                seq: apiSummaryState.seq,
+                latest: body,
+                payloadHash: apiSummaryState.latestPayloadHash,
+                payloadSize: apiSummaryState.latestPayloadSize,
+              });
+            }
+            this.logger.log(
+              `Captured NPF summary API response (seq=${apiSummaryState.seq}, pass=${passLabel ?? 'unbound'}, payload_size=${apiSummaryState.latestPayloadSize}, payload_hash=${apiSummaryState.latestPayloadHash ?? 'none'})`,
+            );
+          }
+        }
+      } catch {
+        // best effort; keep DOM fallback path
+      }
+    };
+    page.on('response', apiSummaryListener);
+
+    try {
+      if (!opts?.skipLogin) {
+        await this.login(page, dto, clientWise);
+        await page.locator("//button[contains(text(), 'Close')] | //button[contains(text(), 'Got it')] | //a[@id='dismiss-modal']").first().click({ timeout: 5000 }).catch(() => null);
+      } else {
+        this.logger.log(`Skipping login, reusing existing session for ${clientWise.client_id}`);
+      }
+
+      const filterPasses = [
+        { label: 'None', filterValue: null },
+        { label: 'Form Initiated', filterValue: 'Form Initiated' },
+        { label: 'Paid Apps', filterValue: 'Paid Applications' },
+        { label: 'Enrolment Status', filterValue: 'Enrolment Status' },
+      ];
+
+      // --- PART 1: LEAD VIEW (FINISH ALL PASSES HERE FIRST) ---
+      if (leadsConfig) {
+        this.logger.log('🚀 [PART 1] STARTING ALL LEAD VIEW PASSES...');
+        const currentUrl = page.url();
+        const normalizeUrl = (u: string) => u.split('?')[0].replace(/\/+$/, '').toLowerCase();
+        const alreadyOnLeadView =
+          !!currentUrl &&
+          normalizeUrl(currentUrl) === normalizeUrl(leadsConfig.url);
+        if (alreadyOnLeadView) {
+          this.logger.log(`Lead view already open after login, skipping reload: ${currentUrl}`);
+        } else {
+          await page.goto(leadsConfig.url, { waitUntil: 'load', timeout: 60000 });
+        }
+        await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 15000 }).catch(() => { });
+        await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+        await page.waitForTimeout(2000);
+
+        this.logger.log('Applying Base Filters to Lead View (Once)...');
+        if (leadsConfig.filters?.length) {
+          try {
+            await this.applyNpfBaseFiltersWithRecovery(page, dto, clientWise, leadsConfig);
+          } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            const isClientDropdownMiss =
+              /NPF dropdown option not found/i.test(errorMessage) ||
+              /client_not_in_dropdown/i.test(errorMessage);
+            if (isClientDropdownMiss) {
+              warnings.push({
+                client_id: clientWise.client_id,
+                client_wise_id: clientWise.id,
+                status: 'filter_not_found',
+                filter_applied: 'None',
+                message: `client_not_in_dropdown: ${errorMessage}`,
+                occurred_at: new Date().toISOString(),
+              });
+              this.npfWarn(
+                `[LEAD VIEW] Client option missing in dropdown; skipping save for client_id=${clientWise.client_id}`,
+                clientWise.client_id,
+              );
+              return { status: 'success', warnings };
+            }
+            throw err;
+          }
+        }
+
+        const instanceVal = leadsConfig.filters?.find(f => f.name?.toLowerCase() === 'instance')?.value_to_apply || 'Instance';
+
+        let previousFilter: string | null = null;
+        for (const pass of filterPasses) {
+          const passLabel = pass.label;
+          apiSummaryState.currentPassLabel = passLabel;
+          const apiSeqBeforePass = apiSummaryState.byPass.get(passLabel)?.seq ?? 0;
+          this.logger.log(`\n\n📝 [LEAD VIEW] - Step: ${pass.label}`);
+          let filterApplied = true;
+          if (pass.filterValue) {
+            const filterResult = await this.applyNpfFilter(
+              page,
+              pass.filterValue,
+              previousFilter,
+              clientWise.client_id,
+              () => apiSummaryState.seq,
+            );
+            filterApplied = filterResult.applied;
+            if (!filterResult.applied) {
+              warnings.push({
+                client_id: clientWise.client_id,
+                client_wise_id: clientWise.id,
+                status: filterResult.reason,
+                filter_applied: pass.label,
+                message: filterResult.message,
+                occurred_at: new Date().toISOString(),
+              });
+              this.npfWarn(
+                `[LEAD VIEW] Skipping save for "${pass.label}" because filter was not available/applied.`,
+                clientWise.client_id,
+              );
+              continue;
+            }
+            previousFilter = pass.filterValue;
+          } else {
+            // 🔥 THIS IS THE FIX → ONLY FOR "None"
+            this.logger.log('⏳ Waiting for initial (None) data to load...');
+        
+            await page.waitForFunction(() => {
+              const hasBoxes = document.querySelectorAll('.info-box-number').length > 0;
+              const noData = document.body.innerText.includes('No Record Found');
+              return hasBoxes || noData;
+            }, { timeout: 20000 }).catch(() => null);
+        
+            await page.waitForTimeout(1000);
+          }
+
+          await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 15000 }).catch(() => { });
+          await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+          const noDataVisible = pass.label === 'None' ? await this.isNpfNoDataVisible(page) : false;
+          const apiUpdated = await this.waitForNpfApiSummaryAdvance(
+            () => apiSummaryState.byPass.get(passLabel)?.seq ?? 0,
+            apiSeqBeforePass,
+            `lead_view:${pass.label}`,
+            clientWise.client_id,
+          );
+          if (!apiUpdated) {
+            if (pass.label === 'None' && noDataVisible) {
+              await this.saveNpfNullNoneRowAndStop(
+                clientWise,
+                String(instanceVal),
+                'no_record_found_without_api_update',
+              );
+              return { status: 'success', warnings };
+            }
+            warnings.push({
+              client_id: clientWise.client_id,
+              client_wise_id: clientWise.id,
+              status: 'metrics_not_found',
+              filter_applied: pass.label,
+              message: `[LEAD VIEW] NPF summary API response not captured for "${pass.label}"`,
+              occurred_at: new Date().toISOString(),
+            });
+            this.logger.warn(
+              `[LEAD VIEW] API summary not available for "${pass.label}" (client_id=${clientWise.client_id}).`,
+            );
+            continue;
+          }
+
+          let globalTotals: Record<string, string | null> | null = null;
+          const passApi = apiSummaryState.byPass.get(passLabel);
+          if (passApi && passApi.seq > apiSeqBeforePass) {
+            globalTotals = this.mapNpfApiSummaryToTotals(passApi.latest);
+            if (globalTotals) {
+              this.logger.log(
+                `[LEAD VIEW] Using API totals for "${pass.label}" (seq=${passApi.seq}, payload_hash=${passApi.payloadHash ?? 'none'})`,
+              );
+            }
+          }
+
+          if (!globalTotals) {
+            if (pass.label === 'None' && noDataVisible) {
+              await this.saveNpfNullNoneRowAndStop(
+                clientWise,
+                String(instanceVal),
+                'no_record_found_with_unmapped_api_payload',
+              );
+              return { status: 'success', warnings };
+            }
+            // HTML summary-box scraping intentionally disabled for API-only testing.
+            // Keep old DOM extraction block commented for easy rollback.
+            //
+            // globalTotals = await page.evaluate(() => {
+            //   const data: any = { primary_leads: '0', secondary_leads: '0', tertiary_leads: '0', total_instances: '0', verified_leads: '0', unverified_leads: '0', form_initiated: '0', paid_applications: '0', submit_applications: '0', enrolments: '0' };
+            //   const boxes = Array.from(document.querySelectorAll('.info-box, .summary-card, [class*="info-box"]'));
+            //   boxes.forEach(box => {
+            //     const label = (box.querySelector('.info-box-text, .summary-label, label')?.textContent || '').trim().toLowerCase();
+            //     const num = (box.querySelector('.info-box-number, .summary-count, .count')?.textContent || '').trim().replace(/,/g, '') || '0';
+            //     if (label.includes('unverified leads')) data.unverified_leads = num;
+            //     else if (label.includes('verified leads')) data.verified_leads = num;
+            //     else if (label.includes('primary leads')) data.primary_leads = num;
+            //     else if (label.includes('secondary leads')) data.secondary_leads = num;
+            //     else if (label.includes('tertiary leads')) data.tertiary_leads = num;
+            //     else if (label.includes('total instances')) data.total_instances = num;
+            //     else if (label.includes('form initiated')) data.form_initiated = num;
+            //     else if (label.includes('paid application')) data.paid_applications = num;
+            //     else if (label.includes('submitted application')) data.submit_applications = num;
+            //     else if (label.includes('enrolment')) data.enrolments = num;
+            //   });
+            //   return data;
+            // });
+            // this.logger.log(`[LEAD VIEW] API totals unavailable; used DOM totals for "${pass.label}"`);
+            warnings.push({
+              client_id: clientWise.client_id,
+              client_wise_id: clientWise.id,
+              status: 'metrics_not_found',
+              filter_applied: pass.label,
+              message: `[LEAD VIEW] API totals mapping failed for "${pass.label}"`,
+              occurred_at: new Date().toISOString(),
+            });
+            this.logger.warn(
+              `[LEAD VIEW] API totals mapping failed for "${pass.label}" (client_id=${clientWise.client_id}); skipping save.`,
+            );
+            continue;
+          }
+
+          if (
+            pass.label === 'None' &&
+            Object.values(globalTotals).every((v) => v === null)
+          ) {
+            await this.saveNpfNullNoneRowAndStop(
+              clientWise,
+              String(instanceVal),
+              'api_totals_all_null_for_none_filter',
+            );
+            return { status: 'success', warnings };
+          }
+
+          this.logger.log(`   📊 Result (${pass.label}): ${JSON.stringify(globalTotals)}`);
+          const jobData = {
+            target: 'npf_funnel' as TargetKind,
+            rows: [{
+              ...globalTotals,
+              data_source: 'npf_api',
+              source: 'GLOBAL',
+              filter_applied: pass.label,
+              funnel_source: 'lead_view',
+              instance_filter: String(instanceVal),
+            }],
+            meta: { client_id: clientWise.client_id, year: clientWise.year, user_id: clientWise.user_id, config_id: clientWise.config_id! },
+          };
+          
+          // NPF Funnel data is tiny (1 row), so we save directly to DB without using the Redis queue
+          await this.saveScrapedDataDirectly(jobData);
+        }
+        apiSummaryState.currentPassLabel = null;
+      }
+
+      // --- PART 2: CAMPAIGN VIEW ---
+      // Intentionally disabled for now. We only scrape/store lead_view funnel rows.
+      // Kept old campaign_view implementation commented (as requested).
+      //
+      // if (summaryConfig) {
+      //   this.logger.log('🚀 [PART 2] STARTING ALL CAMPAIGN VIEW PASSES...');
+      //   await page.goto(summaryConfig.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      //   await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 15000 }).catch(() => { });
+      //   await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+      //   await page.waitForTimeout(2000);
+      //
+      //   this.logger.log('Applying Base Filters to Campaign View (Once)...');
+      //   if (summaryConfig.filters?.length) {
+      //     await this.applyFilters(page, summaryConfig.filters);
+      //     const searchBtn = page.locator("//button[contains(., 'Search')] | //a[contains(., 'Search')]").first();
+      //     if (await searchBtn.isVisible()) {
+      //       await searchBtn.click({ force: true });
+      //       await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 20000 }).catch(() => { });
+      //       await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+      //     }
+      //   }
+      //
+      //   const instanceVal = summaryConfig.filters?.find(f => f.name?.toLowerCase() === 'instance')?.value_to_apply || 'Instance';
+      //   let previousFilter: string | null = null;
+      //
+      //   for (const pass of filterPasses) {
+      //     this.logger.log(`\n\n📝 [CAMPAIGN VIEW] - Step: ${pass.label}`);
+      //     let filterApplied = true;
+      //     if (pass.filterValue) {
+      //       filterApplied = await this.applyNpfFilter(page, pass.filterValue, previousFilter);
+      //       if (!filterApplied) {
+      //         this.logger.warn(`[CAMPAIGN VIEW] Skipping save for "${pass.label}" because filter was not available/applied.`);
+      //         continue;
+      //       }
+      //       previousFilter = pass.filterValue;
+      //     }
+      //
+      //     await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 15000 }).catch(() => { });
+      //     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+      //     await page.waitForFunction(
+      //       () => (document.querySelectorAll('.info-box, .summary-card, [class*="info-box"]').length > 0) || (document.body.innerText.includes('No Record Found')),
+      //       { timeout: 15000 }
+      //     ).catch(() => null);
+      //     await page.waitForTimeout(1000);
+      //
+      //     const globalTotals = await page.evaluate(() => {
+      //       const data: any = {
+      //         primary_leads: '0',
+      //         secondary_leads: '0',
+      //         tertiary_leads: '0',
+      //         total_instances: '0',
+      //         verified_leads: '0',
+      //         unverified_leads: '0',
+      //         form_initiated: '0',
+      //         paid_applications: '0',
+      //         submit_applications: '0',
+      //         enrolments: '0'
+      //       };
+      //       const boxes = Array.from(document.querySelectorAll('.info-box, .summary-card, [class*="info-box"]'));
+      //       boxes.forEach(box => {
+      //         const label = (box.querySelector('.info-box-text, .summary-label, label')?.textContent || '').trim().toLowerCase();
+      //         const num = (box.querySelector('.info-box-number, .summary-count, .count')?.textContent || '').trim().replace(/,/g, '') || '0';
+      //         if (label.includes('unverified leads')) data.unverified_leads = num;
+      //         else if (label.includes('verified leads')) data.verified_leads = num;
+      //         else if (label.includes('secondary leads')) data.secondary_leads = num;
+      //         else if (label.includes('tertiary leads')) data.tertiary_leads = num;
+      //         else if (label.includes('total instances')) data.total_instances = num;
+      //         else if (label.includes('primary leads')) data.primary_leads = num;
+      //         else if (label.includes('form initiated')) data.form_initiated = num;
+      //         else if (label.includes('paid application')) data.paid_applications = num;
+      //         else if (label.includes('submitted application')) data.submit_applications = num;
+      //         else if (label.includes('enrolment')) data.enrolments = num;
+      //       });
+      //       return data;
+      //     });
+      //
+      //     this.logger.log(`   📊 Result (${pass.label}): ${JSON.stringify(globalTotals)}`);
+      //     const jobData = {
+      //       target: 'npf_funnel' as TargetKind,
+      //       rows: [{
+      //         ...globalTotals,
+      //         source: 'GLOBAL',
+      //         filter_applied: pass.label,
+      //         funnel_source: 'campaign_view',
+      //         instance_filter: String(instanceVal),
+      //       }],
+      //       meta: { client_id: clientWise.client_id, year: clientWise.year, user_id: clientWise.user_id, config_id: clientWise.config_id! },
+      //     };
+      //
+      //     await this.saveScrapedDataDirectly(jobData);
+      //   }
+      // }
+      return { status: 'success', warnings };
+    } catch (err) {
+      this.npfError(
+        'NPF Funnel Scrape Failed',
+        clientWise?.client_id ?? dto.client_id,
+        err instanceof Error ? err.stack : undefined,
+      );
+      throw err;
+    } finally {
+      page.off('response', apiSummaryListener);
+      if (!opts?.page) {
+        const closeTask = async () => {
+          await browser?.page?.close().catch(() => null);
+          await browser?.context?.close().catch(() => null);
+          await browser?.browser?.close().catch(() => null);
+        };
+        await Promise.race([
+          closeTask(),
+          new Promise((resolve) => setTimeout(resolve, 5000))
+        ]);
+      }
+    }
+  }
+
+  private async applyNpfFilter(
+    page: Page,
+    filterValue: string | null,
+    previousFilter: string | null = null,
+    clientId?: number,
+    getApiSeq?: () => number,
+  ): Promise<NpfFilterApplyResult> {
+    if (!filterValue) return { applied: true };
+
+    const clickApplyButton = async (
+      buttonLocator: import('playwright').Locator,
+      contextLabel: string,
+    ): Promise<boolean> => {
+      // Some NPF layouts render duplicate Apply buttons; first visible one wins.
+      for (let i = 0; i < 3; i += 1) {
+        const btn = buttonLocator.nth(i);
+        const exists = await btn.count().catch(() => 0);
+        if (!exists) continue;
+        const clicked = await btn
+          .click({ force: true })
+          .then(() => true)
+          .catch(() => false);
+        if (clicked) return true;
+
+        const jsClicked = await btn
+          .evaluate((el) => {
+            const h = el as HTMLElement;
+            h.click();
+            return true;
+          })
+          .catch(() => false);
+        if (jsClicked) return true;
+      }
+      this.npfWarn(`Unable to click Apply button (${contextLabel})`, clientId);
+      return false;
+    };
+
+    this.logger.log(`Starting applyNpfFilter for: ${filterValue}` + (previousFilter ? ` (removing previous: ${previousFilter})` : ''));
+
+    // Dismiss any notification banners
+    await page.locator("//button[@aria-label='Close']").first().click({ timeout: 1000 }).catch(() => null);
+
+    // Map filter label → checkbox ID (matches the actual HTML ids in the popup)
+    const filterIdMap: Record<string, string> = {
+      'Form Initiated': 'u_form_initiated',
+      'Paid Applications': 'u_payment_approved',
+      'Enrolment Status': 'u_enrollment_status',
+    };
+
+    const newCheckboxId = filterIdMap[filterValue];
+    if (!newCheckboxId) {
+      this.npfError(
+        `❌ No checkbox ID mapped for filter: "${filterValue}". Add it to filterIdMap.`,
+        clientId,
+      );
+      return {
+        applied: false,
+        reason: 'filter_not_found',
+        message: `No checkbox ID mapped for filter "${filterValue}"`,
+      };
+    }
+
+    // STEP 1: If there's a previous filter, open popup → uncheck it → Apply
+    if (previousFilter) {
+      const prevCheckboxId = filterIdMap[previousFilter];
+      if (prevCheckboxId) {
+        this.logger.log(`Removing previous filter: "${previousFilter}" (#${prevCheckboxId})`);
+
+        const advBtnPrev = page.locator("//button[contains(., 'Advance Filter')]").first();
+        await advBtnPrev.click({ force: true });
+        await page.waitForTimeout(800);
+
+        const prevCheckbox = page.locator(`#${prevCheckboxId}`);
+        if (await prevCheckbox.isChecked().catch(() => false)) {
+          let unchecked = false;
+          try {
+            await prevCheckbox.uncheck({ force: true });
+            unchecked = true;
+          } catch {
+            // Some NPF variants keep the checkbox input hidden; fallback to JS state update.
+            unchecked = await prevCheckbox
+              .evaluate((el) => {
+                const input = el as HTMLInputElement;
+                if (!input) return false;
+                input.checked = false;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
+              })
+              .catch(() => false);
+          }
+
+          if (!unchecked) {
+            this.npfWarn(`Unable to uncheck previous filter #${prevCheckboxId}`, clientId);
+            return {
+              applied: false,
+              reason: 'filter_not_found',
+              message: `Previous filter "${previousFilter}" could not be unchecked`,
+            };
+          }
+          this.logger.log(`Unchecked #${prevCheckboxId}`);
+        } else {
+          this.npfWarn(`#${prevCheckboxId} was already unchecked`, clientId);
+        }
+        await page.waitForTimeout(300);
+
+        // Click Apply to remove the previous ng-select field from main page
+        // Uses rounded-0 to distinguish from other hidden Apply buttons on the page
+        const applyBtnPrev = page.locator("//button[contains(@class,'btn-success') and contains(@class,'rounded-0') and normalize-space(.)='Apply']").first();
+        const prevApplyClicked = await clickApplyButton(
+          page.locator("//button[contains(@class,'btn-success') and contains(@class,'rounded-0') and normalize-space(.)='Apply']"),
+          `remove previous filter "${previousFilter}"`,
+        );
+        if (!prevApplyClicked) {
+          return {
+            applied: false,
+            reason: 'filter_not_found',
+            message: `Apply button not clickable while removing previous filter "${previousFilter}"`,
+          };
+        }
+        this.logger.log(`Clicked Apply to remove previous filter`);
+        // UI refresh can be delayed/flaky; do a light settle and rely on API refresh after final Search.
+        await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 10000 }).catch(() => null);
+        await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => null);
+
+        // Strict guard: do not continue to next filter unless previous one is really cleared.
+        await advBtnPrev.click({ force: true }).catch(() => null);
+        await page.waitForTimeout(400);
+        const stillChecked = await page
+          .locator(`#${prevCheckboxId}`)
+          .isChecked()
+          .catch(() => false);
+        await page.keyboard.press('Escape').catch(() => null);
+        if (stillChecked) {
+          return {
+            applied: false,
+            reason: 'filter_not_found',
+            message: `Previous filter "${previousFilter}" is still checked after Apply`,
+          };
+        }
+      }
+    }
+
+    // STEP 2: Open Advance Filter popup → check new filter → Apply
+    this.logger.log(`Opening Advance Filter to select: "${filterValue}" (#${newCheckboxId})`);
+    const advBtn = page.locator("//button[contains(., 'Advance Filter')]").first();
+    if (!(await advBtn.isVisible({ timeout: 5000 }).catch(() => false))) {
+      this.npfWarn(`Advance Filter button not found or not visible.`, clientId);
+      return {
+        applied: false,
+        reason: 'filter_not_found',
+        message: `Advance Filter button not found/visible for "${filterValue}"`,
+      };
+    }
+
+    await advBtn.click({ force: true });
+    await page.waitForTimeout(800);
+
+    const newCheckbox = page.locator(`#${newCheckboxId}`);
+    if (!(await newCheckbox.isVisible({ timeout: 3000 }).catch(() => false))) {
+      this.npfError(`❌ Checkbox #${newCheckboxId} not found in popup`, clientId);
+      await page.keyboard.press('Escape');
+      return {
+        applied: false,
+        reason: 'filter_not_found',
+        message: `Checkbox #${newCheckboxId} not visible for "${filterValue}"`,
+      };
+    }
+
+    if (!(await newCheckbox.isChecked())) {
+      await newCheckbox.check({ force: true });
+      this.logger.log(`Checked #${newCheckboxId}`);
+    }
+    await page.waitForTimeout(300);
+
+    // Click Apply to add the new ng-select field on the main page
+    // Uses rounded-0 to distinguish from other hidden Apply buttons on the page
+    const applyBtn = page.locator("//button[contains(@class,'btn-success') and contains(@class,'rounded-0') and normalize-space(.)='Apply']").first();
+    const newApplyClicked = await clickApplyButton(
+      page.locator("//button[contains(@class,'btn-success') and contains(@class,'rounded-0') and normalize-space(.)='Apply']"),
+      `apply new filter "${filterValue}"`,
+    );
+    if (!newApplyClicked) {
+      return {
+        applied: false,
+        reason: 'filter_not_found',
+        message: `Apply button not clickable for filter "${filterValue}"`,
+      };
+    }
+    this.logger.log(`Clicked Apply for new filter`);
+    // UI refresh can be delayed/flaky; do a light settle and rely on API refresh after final Search.
+    await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 10000 }).catch(() => null);
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => null);
+
+    // STEP 3: Find the ng-select by its placeholder text and click the .ng-input input
+    // IMPORTANT: Must click .ng-input input — clicking the container/placeholder closes the dropdown immediately
+    this.logger.log(`Finding ng-select for "${filterValue}" on main page...`);
+    const ngSelectInput = page
+      .locator(`.ng-select-container:has(.ng-placeholder:text("${filterValue}")) .ng-input input`)
+      .first();
+
+    if (!(await ngSelectInput.isVisible({ timeout: 5000 }).catch(() => false))) {
+      this.npfError(
+        `❌ ng-select input for "${filterValue}" not found on main page after Apply`,
+        clientId,
+      );
+      return {
+        applied: false,
+        reason: 'filter_not_found',
+        message: `ng-select input not found for "${filterValue}" after applying filter`,
+      };
+    }
+
+    await ngSelectInput.click({ force: true });
+    this.logger.log(`Clicked ng-input input, waiting for .ng-dropdown-panel...`);
+
+    // STEP 4: Wait for the floating dropdown panel and select "Yes"
+    const dropdownPanel = page.locator('.ng-dropdown-panel');
+    await dropdownPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {
+      this.npfWarn(`.ng-dropdown-panel did not appear after clicking input`, clientId);
+    });
+
+    const yesOption = dropdownPanel.locator('.ng-option', { hasText: 'Yes' }).first();
+    if (!(await yesOption.isVisible({ timeout: 3000 }).catch(() => false))) {
+      this.npfError(
+        `❌ "Yes" option not found in .ng-dropdown-panel for "${filterValue}"`,
+        clientId,
+      );
+      await page.keyboard.press('Escape');
+      return {
+        applied: false,
+        reason: 'filter_not_found',
+        message: `"Yes" option not visible for "${filterValue}" dropdown`,
+      };
+    }
+
+    await yesOption.click({ force: true });
+    this.logger.log(`Selected "Yes" for "${filterValue}"`);
+    await page.waitForTimeout(500);
+
+    // STEP 5: Click the global Search button to execute the filtered query
+    const searchBtn = page.locator("//button[normalize-space(.)='Search']").first();
+    if (await searchBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      this.logger.log(`Clicking global Search button...`);
+      await searchBtn.click({ force: true });
+      // For API-only mode, we don't require UI metric/card refresh here.
+      // Per-pass API wait is handled in caller (waitForNpfApiSummaryAdvance).
+      await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 15000 }).catch(() => null);
+      await page.waitForLoadState('networkidle', { timeout: 7000 }).catch(() => null);
+    } else {
+      this.npfWarn(`Global Search button not found after selecting filter`, clientId);
+    }
+    return { applied: true };
+  }
+
+  private async waitForNpfReload(
+    page: Page,
+    reason: string,
+    clientId?: number,
+    getApiSeq?: () => number,
+  ): Promise<{ metricChanged: boolean; domChanged: boolean; cardsPresent: boolean; usedDomFallback: boolean }> {
+    this.logger.log(`⏳ Waiting for NPF data refresh (${reason})...`);
+    const apiSeqBefore = getApiSeq ? getApiSeq() : -1;
+
+    const baseMaxWaitMs = this.getEnvInt('SCRAPER_NPF_REFRESH_MAX_WAIT_MS', 60000);
+    const maxWaitMs = this.getAdaptiveNpfWaitMs('refresh', baseMaxWaitMs, clientId);
+    const pollMs = this.getEnvInt('SCRAPER_NPF_REFRESH_POLL_MS', 1000);
+    const stablePollsNeeded = Math.max(
+      2,
+      this.getEnvInt('SCRAPER_NPF_REFRESH_STABLE_POLLS', 2),
+    );
+    this.logger.log(
+      `NPF refresh wait window=${maxWaitMs}ms (base=${baseMaxWaitMs}ms, client_id=${clientId ?? 'n/a'})`,
+    );
+
+    const baseline = await page
+      .evaluate(() => {
+        const firstMetric = document.querySelector('.info-box-number')?.textContent?.trim() ?? '';
+        const boxes = document.querySelectorAll('.info-box, .summary-card, [class*="info-box"]').length;
+        const firstRow = Array.from(document.querySelectorAll('table tbody tr td'))
+          .slice(0, 3)
+          .map((n) => (n.textContent ?? '').trim())
+          .join('|');
+        const syncText =
+          Array.from(document.querySelectorAll('body *'))
+            .map((n) => (n.textContent ?? '').trim())
+            .find((t) => t.toLowerCase().includes('last sync')) ?? '';
+        const signature = `${firstMetric}::${boxes}::${firstRow}::${syncText}`;
+        return { firstMetric, signature };
+      })
+      .catch(() => ({ firstMetric: '', signature: '' }));
+
+    this.logger.log(`Previous metric value: ${baseline.firstMetric}`);
+
+    const deadline = Date.now() + maxWaitMs;
+    let metricChanged = false;
+    let domChanged = false;
+    let cardsPresent = false;
+    let sawLoader = false;
+    let stablePolls = 0;
+
+    while (Date.now() < deadline) {
+      const state = await page
+        .evaluate(() => {
+          const firstMetric = document.querySelector('.info-box-number')?.textContent?.trim() ?? '';
+          const boxes = document.querySelectorAll('.info-box, .summary-card, [class*="info-box"]').length;
+          const firstRow = Array.from(document.querySelectorAll('table tbody tr td'))
+            .slice(0, 3)
+            .map((n) => (n.textContent ?? '').trim())
+            .join('|');
+          const syncText =
+            Array.from(document.querySelectorAll('body *'))
+              .map((n) => (n.textContent ?? '').trim())
+              .find((t) => t.toLowerCase().includes('last sync')) ?? '';
+          const signature = `${firstMetric}::${boxes}::${firstRow}::${syncText}`;
+          const loaderVisible = Array.from(
+            document.querySelectorAll('.ng-spinner-loader, .fixed-loader'),
+          ).some((n) => {
+            const el = n as HTMLElement;
+            return !!(el.offsetParent || el.getClientRects().length);
+          });
+          return { firstMetric, signature, cardsCount: boxes, loaderVisible };
+        })
+        .catch(() => ({
+          firstMetric: '',
+          signature: '',
+          cardsCount: 0,
+          loaderVisible: false,
+        }));
+
+      if (state.loaderVisible) {
+        sawLoader = true;
+        stablePolls = 0;
+        await page.waitForTimeout(pollMs);
+        continue;
+      }
+
+      cardsPresent = state.cardsCount > 0;
+      metricChanged = state.firstMetric !== baseline.firstMetric;
+      domChanged = state.signature !== baseline.signature;
+
+      const refreshedOrSettled = cardsPresent && (domChanged || metricChanged || sawLoader);
+      if (refreshedOrSettled) {
+        stablePolls += 1;
+        if (stablePolls >= stablePollsNeeded) {
+          break;
+        }
+      } else {
+        stablePolls = 0;
+      }
+
+      await page.waitForTimeout(pollMs);
+    }
+
+    const timedOut = stablePolls < stablePollsNeeded;
+    this.updateAdaptiveNpfPenalty('refresh', timedOut, clientId);
+    const apiSeqAfter = getApiSeq ? getApiSeq() : -1;
+    const apiAdvanced = apiSeqBefore >= 0 && apiSeqAfter > apiSeqBefore;
+    if (!metricChanged && !apiAdvanced) {
+      this.npfWarn('⚠️ Metric did not change; relying on DOM/settled-state signals.', clientId);
+    }
+    this.logger.log(`✅ NPF data refresh completed (${reason})`);
+    return {
+      metricChanged,
+      domChanged,
+      cardsPresent,
+      usedDomFallback: !metricChanged,
+    };
+  }
+
+  private async waitForNpfMetricsCardsReady(
+    page: Page,
+    reason: string,
+    clientId?: number,
+  ): Promise<boolean> {
+    const baseMaxWaitMs = this.getEnvInt('SCRAPER_NPF_METRICS_WAIT_MS', 60000);
+    const maxWaitMs = this.getAdaptiveNpfWaitMs('metrics', baseMaxWaitMs, clientId);
+    const pollMs = this.getEnvInt('SCRAPER_NPF_METRICS_POLL_MS', 1000);
+    const deadline = Date.now() + maxWaitMs;
+    this.logger.log(
+      `NPF metrics wait window=${maxWaitMs}ms (base=${baseMaxWaitMs}ms, client_id=${clientId ?? 'n/a'}, reason=${reason})`,
+    );
+
+    while (Date.now() < deadline) {
+      const state = await page
+        .evaluate(() => {
+          const cardsCount = document.querySelectorAll(
+            '.info-box, .summary-card, [class*="info-box"]',
+          ).length;
+          const noData = document.body.innerText.includes('No Record Found');
+          const loaderVisible = Array.from(
+            document.querySelectorAll('.ng-spinner-loader, .fixed-loader'),
+          ).some((n) => {
+            const el = n as HTMLElement;
+            return !!(el.offsetParent || el.getClientRects().length);
+          });
+          return { cardsCount, noData, loaderVisible };
+        })
+        .catch(() => ({ cardsCount: 0, noData: false, loaderVisible: false }));
+
+      if (!state.loaderVisible && state.cardsCount > 0) {
+        this.updateAdaptiveNpfPenalty('metrics', false, clientId);
+        return true;
+      }
+      if (!state.loaderVisible && state.noData) {
+        this.npfWarn(
+          `NPF metrics cards not shown (${reason}): page shows "No Record Found"`,
+          clientId,
+        );
+        this.updateAdaptiveNpfPenalty('metrics', true, clientId);
+        return false;
+      }
+      await page.waitForTimeout(pollMs);
+    }
+
+    this.npfWarn(
+      `NPF metrics wait timeout (${reason}) after ${maxWaitMs}ms; cards did not appear.`,
+      clientId,
+    );
+    this.updateAdaptiveNpfPenalty('metrics', true, clientId);
+    return false;
+  }
+
   async scrapeLeads(dto: ScrapeTargetDto) {
-    return this.scrapeTarget(dto, 'leads');
+    const res = await this.scrapeTarget(dto, 'leads');
+    // Auto-trigger funnel scrape after leads if applicable
+    if (this.isNpfClient(dto)) {
+      this.scrapeNpfFunnelData(dto).catch((e) =>
+        this.npfError('Auto funnel scrape failed', dto.client_id, e?.stack),
+      );
+    }
+    return res;
+  }
+
+  private isNpfClient(dto: any): boolean {
+    return true; // Simple heuristic: run for all for now or check URL in config
   }
 
   async scrapeSummary(dto: ScrapeTargetDto) {
@@ -443,18 +1677,69 @@ export class ScrapperService implements OnModuleInit {
       await page.waitForTimeout(creds.delay);
     }
     await this.formFillerService.fillForm(page, [passwordField], { stopOnError: true });
+    // Some NPF login forms only enable/handle submit after true input+blur/change.
+    try {
+      const pwdLoc = page.locator(`xpath=${creds.password_xpath}`).first();
+      await pwdLoc.focus({ timeout: 3000 }).catch(() => null);
+      await pwdLoc.dispatchEvent('input').catch(() => null);
+      await pwdLoc.dispatchEvent('change').catch(() => null);
+      await pwdLoc.dispatchEvent('blur').catch(() => null);
+      await page.waitForTimeout(250);
+    } catch {
+      // best-effort only
+    }
 
-    // Submit login: try common submit patterns, fallback to Enter key.
+    // Submit login: try configured xpath, then common button patterns, then Enter on password field.
     this.logger.log('Submitting login...');
     try {
+      let submitClicked = false;
       // 1) Preferred: click configured submit xpath.
       const submitXpath = (creds as any)?.login_submit_xpath?.trim?.();
       const submitClickMs = this.getEnvInt('SCRAPER_LOGIN_SUBMIT_CLICK_TIMEOUT_MS', 30000);
       if (submitXpath) {
         await page.locator(`xpath=${submitXpath}`).first().click({ timeout: submitClickMs });
+        submitClicked = true;
       } else {
-        // 2) Heuristic: common submit button.
-        await page.locator(`xpath=//button[@type="submit"]`).first().click({ timeout: submitClickMs });
+        // 2) Heuristic: common submit/login buttons seen across NPF variants.
+        const submitCandidates = [
+          `xpath=//button[@type="submit"]`,
+          `xpath=//button[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'login')]`,
+          `xpath=//button[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'log in')]`,
+          `xpath=//button[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'sign in')]`,
+          `xpath=//input[@type='submit']`,
+        ];
+        for (const candidate of submitCandidates) {
+          const loc = page.locator(candidate).first();
+          const count = await loc.count().catch(() => 0);
+          if (!count) continue;
+
+          // Prefer a real mouse click first (closer to manual interaction).
+          let clicked = false;
+          const box = await loc.boundingBox().catch(() => null);
+          if (box && box.width > 0 && box.height > 0) {
+            await page.mouse
+              .click(box.x + box.width / 2, box.y + box.height / 2)
+              .then(() => {
+                clicked = true;
+              })
+              .catch(() => null);
+          }
+          if (!clicked) {
+            await loc.click({ timeout: submitClickMs, force: true }).catch(() => null);
+          }
+          if (!clicked) {
+            await loc.evaluate((el: Element) => (el as HTMLElement).click()).catch(() => null);
+          }
+          submitClicked = true;
+          this.logger.log(`Login submit clicked using candidate: ${candidate}`);
+          break;
+        }
+      }
+
+      // 3) Some login forms bind Enter on password field only.
+      if (!submitClicked) {
+        const passwordLoc = page.locator(`xpath=${creds.password_xpath}`).first();
+        await passwordLoc.press('Enter', { timeout: submitClickMs }).catch(() => null);
       }
     } catch {
       try {
@@ -488,7 +1773,7 @@ export class ScrapperService implements OnModuleInit {
     ]);
     this.logger.log(
       `Post-login session check: cookies=${cookies.length}, localStorageKeys=${storageSignals.localStorageKeys}, ` +
-        `sessionStorageKeys=${storageSignals.sessionStorageKeys}`,
+      `sessionStorageKeys=${storageSignals.sessionStorageKeys}`,
     );
 
     // If we're still on a login-like page, log a warning (often means submit xpath wrong or login failed).
@@ -498,15 +1783,34 @@ export class ScrapperService implements OnModuleInit {
     }
   }
 
-  private async applyFilters(page: Page, items: Array<any>) {
-    this.logger.log(`Applying filters: total_items=${items.length}`);
+  private async applyFilters(
+    page: Page,
+    items: Array<any>,
+    options: ApplyFiltersOptions = {},
+  ): Promise<ApplyFiltersResult> {
+    this.logger.log(
+      `Applying filters: total_items=${items.length}` +
+        (options.contextLabel ? ` context=${options.contextLabel}` : ''),
+    );
     let appliedCount = 0;
+    let failedCount = 0;
+    const failedItems: string[] = [];
     let didTriggerSearchOrClick = false;
     const interFilterDelayMs = this.getEnvInt('SCRAPER_DELAY_MS_BETWEEN_FILTERS', 1200);
+    const loaderWaitMs = this.getEnvInt('SCRAPER_NPF_LOADER_WAIT_MS', 15000);
 
     for (let idx = 0; idx < items.length; idx += 1) {
       const item = items[idx];
       const xpath = item?.xpath?.trim?.();
+      const itemName = item?.name ?? `index_${idx}`;
+
+      await this.waitForFixedLoaderToClear(
+        page,
+        loaderWaitMs,
+        options.clientId,
+        `${options.contextLabel ?? 'applyFilters'}-pre-item-${idx + 1}`,
+      );
+
       if (!xpath) {
         this.logger.warn(`Filter[${idx + 1}/${items.length}] skipped: empty xpath`);
         continue;
@@ -517,7 +1821,10 @@ export class ScrapperService implements OnModuleInit {
 
       const valueToApply: string | undefined = item?.value_to_apply;
       const effectiveValueToApply =
-        formType === 'checkbox' && (valueToApply === undefined || valueToApply === null || String(valueToApply).trim().length === 0)
+        formType === 'checkbox' &&
+        (valueToApply === undefined ||
+          valueToApply === null ||
+          String(valueToApply).trim().length === 0)
           ? 'true'
           : valueToApply;
       const shouldApply =
@@ -525,12 +1832,13 @@ export class ScrapperService implements OnModuleInit {
           ? true
           : formType === 'checkbox'
             ? true
-            : formType === 'select' && (selectorType ?? '').toLowerCase() === 'searchable_dropdown'
+            : formType === 'select' &&
+                (selectorType ?? '').toLowerCase() === 'searchable_dropdown'
               // Allow searchable dropdown "open/select panel" actions even when value is empty.
               ? true
-            : valueToApply !== undefined &&
-              valueToApply !== null &&
-              String(valueToApply).trim().length > 0;
+              : valueToApply !== undefined &&
+                valueToApply !== null &&
+                String(valueToApply).trim().length > 0;
 
       if (!shouldApply) {
         this.logger.warn(
@@ -541,9 +1849,8 @@ export class ScrapperService implements OnModuleInit {
       }
 
       const matchCount = await page.locator(`xpath=${xpath}`).count().catch(() => 0);
-
       this.logger.log(
-        `Filter[${idx + 1}/${items.length}] apply: selector_type=${selectorType ?? ''} formType=${formType} name=${item?.name ?? ''} ` +
+        `Filter[${idx + 1}/${items.length}] apply: selector_type=${selectorType ?? ''} formType=${formType} name=${itemName} ` +
           `value_to_apply=${effectiveValueToApply ?? ''} match_count=${matchCount} xpath=${xpath}`,
       );
 
@@ -560,31 +1867,141 @@ export class ScrapperService implements OnModuleInit {
         ...(dateStrategy ? { dateStrategy } : {}),
       };
 
-      // DOM often changes after login; retry a bit if element isn't ready yet.
+      let itemApplied = false;
       let lastErr: unknown;
       for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
+          await this.waitForFixedLoaderToClear(
+            page,
+            loaderWaitMs,
+            options.clientId,
+            `${options.contextLabel ?? 'applyFilters'}-item-${idx + 1}-attempt-${attempt}`,
+          );
+
           const waitReady = await this.waitForLocatorToReappear(page, xpath, 12000);
           this.logger.log(
             `Filter[${idx + 1}/${items.length}] pre-attempt ${attempt}/3 locator_ready=${waitReady}`,
           );
+
+          const isNpfDropdown = await page
+            .locator(`xpath=${xpath}`)
+            .evaluate(
+              (el) =>
+                el.textContent?.includes('Select') ||
+                el.classList.contains('select-institute'),
+            )
+            .catch(() => false);
+
+          if (isNpfDropdown && formType === 'select') {
+            await page.locator(`xpath=${xpath}`).first().click();
+            await page.waitForTimeout(1000);
+            const desiredValue = String(effectiveValueToApply ?? '');
+            const matchedOptionText = await page.evaluate((target) => {
+              const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '');
+              const targetNorm = normalize(target);
+              const panels = Array.from(
+                document.querySelectorAll('.ng-dropdown-panel'),
+              ) as HTMLElement[];
+              const visiblePanel = panels.find(
+                (p) => !!(p.offsetParent || p.getClientRects().length),
+              );
+              if (!visiblePanel) return '';
+
+              const options = Array.from(
+                visiblePanel.querySelectorAll(
+                  '.ng-option, .ng-dropdown-panel-items .ng-option, li, div.option',
+                ),
+              ) as HTMLElement[];
+
+              const visibleOptions = options.filter((el) => {
+                const text = (el.textContent ?? '').trim();
+                if (!text) return false;
+                return !!(el.offsetParent || el.getClientRects().length);
+              });
+
+              const exact = visibleOptions.find((el) => {
+                const text = (el.textContent ?? '').trim();
+                const norm = normalize(text);
+                return norm === targetNorm;
+              });
+              if (exact) {
+                exact.click();
+                return (exact.textContent ?? '').trim();
+              }
+
+              const partial = visibleOptions.find((el) => {
+                const text = (el.textContent ?? '').trim();
+                const norm = normalize(text);
+                if (!norm || !targetNorm) return false;
+                return norm.includes(targetNorm) || targetNorm.includes(norm);
+              });
+
+              if (!partial) return '';
+              partial.click();
+              return (partial.textContent ?? '').trim();
+            }, desiredValue);
+
+            if (matchedOptionText) {
+              this.logger.log(
+                `NPF-specific dropdown select successful: requested="${desiredValue}" matched="${matchedOptionText}"`,
+              );
+              itemApplied = true;
+              break;
+            }
+
+            // IMPORTANT: For NPF dropdowns we must not proceed when requested option
+            // is missing; otherwise old/default selection can be scraped under wrong client.
+            throw new BadRequestException(
+              `NPF dropdown option not found for "${desiredValue}" (name=${itemName})`,
+            );
+          }
+
           await this.formFillerService.fillForm(page, [field], { stopOnError: true });
-          // Advanced/custom dropdown UIs often re-render after each click/select.
-          // Wait a short beat for DOM stabilization so next step uses fresh nodes.
           await page.waitForTimeout(250);
-          lastErr = null;
+          itemApplied = true;
           break;
         } catch (err) {
           lastErr = err;
           this.logger.warn(
-            `Filter[${idx + 1}/${items.length}] apply failed (attempt ${attempt}/3) name=${item?.name ?? ''} xpath=${xpath}`,
+            `Filter[${idx + 1}/${items.length}] apply failed (attempt ${attempt}/3) name=${itemName} xpath=${xpath}`,
             err instanceof Error ? err.stack : undefined,
           );
+
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          if (
+            errorMessage.includes('intercepts pointer events') ||
+            errorMessage.includes('fixed-loader')
+          ) {
+            await this.waitForFixedLoaderToClear(
+              page,
+              loaderWaitMs,
+              options.clientId,
+              `${options.contextLabel ?? 'applyFilters'}-after-intercept-${idx + 1}`,
+            );
+          }
           await page.waitForTimeout(1500);
         }
       }
-      if (lastErr) {
-        this.logger.warn(`Filter[${idx + 1}/${items.length}] giving up (name=${item?.name ?? ''})`);
+
+      if (!itemApplied) {
+        failedCount += 1;
+        failedItems.push(String(itemName));
+        const baseError = `Filter[${idx + 1}/${items.length}] giving up (name=${itemName})`;
+        this.logger.warn(baseError);
+        if (options.throwOnFailure) {
+          const suffix =
+            lastErr instanceof Error
+              ? `: ${lastErr.message}`
+              : lastErr
+                ? `: ${String(lastErr)}`
+                : '';
+          throw new BadRequestException(`${baseError}${suffix}`);
+        }
+      } else {
+        if (formType === 'click' || formType === 'radio') {
+          didTriggerSearchOrClick = true;
+        }
+        appliedCount += 1;
       }
 
       const itemDelay = typeof item?.delay === 'number' ? item.delay : 0;
@@ -595,19 +2012,19 @@ export class ScrapperService implements OnModuleInit {
         );
         await page.waitForTimeout(effectiveDelay);
       }
-
-      if (formType === 'click' || formType === 'radio') {
-        didTriggerSearchOrClick = true;
-      }
-      appliedCount += 1;
     }
 
-    this.logger.log(`Filters applied: count=${appliedCount}`);
+    this.logger.log(
+      `Filters applied: count=${appliedCount}, failed=${failedCount}` +
+        (failedItems.length ? ` failed_items=${failedItems.join(',')}` : ''),
+    );
     if (didTriggerSearchOrClick) {
       this.logger.log('Search/click filter detected; waiting for results to load...');
       await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => null);
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
     }
+
+    return { appliedCount, failedCount, failedItems };
   }
 
   private async waitForLocatorToReappear(page: Page, xpath: string, timeoutMs = 12000): Promise<boolean> {
@@ -646,7 +2063,7 @@ export class ScrapperService implements OnModuleInit {
       const s = steps[i];
       this.logger.log(
         `Step[${i + 1}/${steps.length}] group=${group} id=${s.id} sequence=${s.sequence} type=${s.step_type} ` +
-          `name=${s.name ?? ''} xpath=${s.xpath}`,
+        `name=${s.name ?? ''} xpath=${s.xpath}`,
       );
     }
     const mapped = steps.map((s) => {
@@ -706,7 +2123,7 @@ export class ScrapperService implements OnModuleInit {
     target: TargetKind,
     row: Record<string, unknown>,
     meta: { client_id: number; year: number; user_id: number; config_id: number },
-  ): ClientWiseLeadsDataEntity | ClientWiseSummaryDataEntity {
+  ): ClientWiseLeadsDataEntity | ClientWiseSummaryDataEntity | NpfFunnelSummaryEntity {
     const normalized: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(row)) {
       normalized[this.normalizeKey(k)] = v;
@@ -752,6 +2169,31 @@ export class ScrapperService implements OnModuleInit {
       return e;
     }
 
+    if (target === 'npf_funnel') {
+      const e = new NpfFunnelSummaryEntity();
+      e.client_id = meta.client_id;
+      e.year = meta.year;
+      e.raw_data = row;
+
+      e.source = (normalized['source'] ?? null) as string | null;
+      e.primary_leads = (normalized['primary_leads'] ?? null) as string | null;
+      e.secondary_leads = (normalized['secondary_leads'] ?? null) as string | null;
+      e.tertiary_leads = (normalized['tertiary_leads'] ?? null) as string | null;
+      e.total_instances = (normalized['total_instances'] ?? null) as string | null;
+      e.verified_leads = (normalized['verified_leads'] ?? null) as string | null;
+      e.unverified_leads = (normalized['unverified_leads'] ?? null) as string | null;
+      e.form_initiated = (normalized['form_initiated'] ?? normalized['form_status'] ?? null) as string | null;
+      e.paid_applications = (normalized['paid_applications'] ?? normalized['payment_approved'] ?? null) as string | null;
+      e.submit_applications = (normalized['submit_applications'] ?? normalized['submitted_applications'] ?? null) as string | null;
+      e.enrolments = (normalized['enrolments'] ?? normalized['enrolment_status'] ?? null) as string | null;
+
+      e.instance_filter = (row['instance_filter'] ?? 'Instance') as string;
+      e.filter_applied = (row['filter_applied'] ?? 'None') as string;
+      e.funnel_source = (row['funnel_source'] ?? 'campaign_view') as string;
+
+      return e;
+    }
+
     const e = new ClientWiseSummaryDataEntity();
     e.client_id = meta.client_id;
     e.year = meta.year;
@@ -778,7 +2220,7 @@ export class ScrapperService implements OnModuleInit {
   private async scrapeTarget(dto: ScrapeTargetDto, target: TargetKind) {
     this.logger.log(
       `Scrape request received: target=${target}, client_wise_id=${dto.client_wise_id ?? 'n/a'}, ` +
-        `client_id=${dto.client_id ?? 'n/a'}, year=${dto.year ?? 'n/a'}, config_id=${dto.config_id ?? 'n/a'}`,
+      `client_id=${dto.client_id ?? 'n/a'}, year=${dto.year ?? 'n/a'}, config_id=${dto.config_id ?? 'n/a'}`,
     );
 
     const resolvedUseProxy = dto.use_proxy ?? this.getEnvBool('SCRAPER_USE_PROXY', false);
@@ -815,7 +2257,7 @@ export class ScrapperService implements OnModuleInit {
 
     this.logger.log(
       `Using client_wise row: id=${clientWise.id}, client_id=${clientWise.client_id}, year=${clientWise.year}, ` +
-        `user_id=${clientWise.user_id}, config_id=${clientWise.config_id}`,
+      `user_id=${clientWise.user_id}, config_id=${clientWise.config_id}`,
     );
 
     if (clientWise.config_id === null || clientWise.config_id === undefined) {
@@ -826,11 +2268,11 @@ export class ScrapperService implements OnModuleInit {
     const targetConfig =
       target === 'leads'
         ? await this.leadsConfigRepository.findOne({
-            where: { client_wise_id: clientWise.id },
-          })
+          where: { client_wise_id: clientWise.id },
+        })
         : await this.summaryConfigRepository.findOne({
-            where: { client_wise_id: clientWise.id },
-          });
+          where: { client_wise_id: clientWise.id },
+        });
 
     if (!targetConfig) {
       throw new NotFoundException(
@@ -840,7 +2282,7 @@ export class ScrapperService implements OnModuleInit {
 
     this.logger.log(
       `Found ${target} config: url=${(targetConfig as any).url}, filters=${(targetConfig as any).filters?.length ?? 0}, ` +
-        `is_advance_filters=${(targetConfig as any).is_advance_filters}, has_extra_steps=${(targetConfig as any).has_extra_steps}`,
+      `is_advance_filters=${(targetConfig as any).is_advance_filters}, has_extra_steps=${(targetConfig as any).has_extra_steps}`,
     );
 
     const browser = await this.playwrightService.createBrowser({
@@ -971,7 +2413,7 @@ export class ScrapperService implements OnModuleInit {
             if (pageNumber >= 2 && previousFirstRowFingerprint !== null && fp === previousFirstRowFingerprint) {
               this.logger.warn(
                 `Page ${pageNumber} first row matches previous page (table did not advance after Next). ` +
-                  `Not queuing duplicate rows. Stop pagination.`,
+                `Not queuing duplicate rows. Stop pagination.`,
               );
               stopPagination = true;
             } else {

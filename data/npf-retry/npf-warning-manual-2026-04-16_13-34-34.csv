@@ -1,0 +1,279 @@
+client_id,client_wise_id,status,filter_applied,message,occurred_at
+7050168,15,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:12:13
+7050168,15,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:12:14
+7050168,15,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:12:16
+7054179,114,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:12:14
+7054179,114,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:12:15
+7054179,114,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:12:17
+7054075,115,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:12:34
+7054075,115,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:12:36
+7054075,115,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:12:37
+7043350,193,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:12:48
+7043350,193,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:12:50
+7043350,193,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:12:52
+7054182,116,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:12:57
+7054182,116,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:12:59
+7054182,116,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:13:01
+7044103,194,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:13:21
+7050982,117,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:13:18
+7050982,117,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:13:20
+7050982,117,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:13:22
+7030296,18,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:13:43
+7030296,18,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:13:45
+7030296,18,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:13:46
+7030030,195,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:13:51
+7033115,196,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:14:07
+7033115,196,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:14:09
+7033115,196,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:14:10
+7042257,19,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:14:15
+7053534,121,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:15:03
+7042489,122,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:15:32
+7029481,199,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:15:34
+7029481,199,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:15:36
+7029481,199,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:15:37
+7032946,21,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:15:41
+7042407,200,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:15:53
+7042407,200,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:15:55
+7042407,200,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:15:57
+7035931,201,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:16:12
+7035931,201,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:16:14
+7035931,201,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:16:16
+7009020,124,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:16:19
+7009020,124,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:16:21
+7009020,124,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:16:23
+7008672,236,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:16:19
+7017335,125,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:16:41
+7017335,125,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:16:43
+7017335,125,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:16:45
+7017553,126,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:17:01
+7017553,126,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:17:02
+7017553,126,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:17:04
+7042325,24,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:17:21
+
+
+7014402,204,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:21:49
+7025055,128,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:21:46
+7025055,128,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:21:48
+7025055,128,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:21:50
+7043008,129,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:22:06
+7043008,129,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:22:08
+7043008,129,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:22:10
+7043111,130,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:22:40
+7051255,206,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:22:40
+7051255,206,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:22:41
+7051255,206,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:22:43
+7053041,207,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:23:00
+7053041,207,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:23:01
+7053041,207,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:23:03
+7053536,246,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:23:09
+7053536,246,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:23:12
+7005714,209,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:24:05
+7007440,210,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:24:24
+7007440,210,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:24:26
+7007440,210,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:24:27
+7053843,250,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:24:43
+7037963,31,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:25:00
+
+Swarrnim Startup & Innovation University - found but not scrap
+7043148,131,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",16-04-2026 12:23:54
+7043148,131,metrics_not_found,Form Initiated,"[LEAD VIEW] NPF summary API response not captured for ""Form Initiated""",16-04-2026 12:24:27
+7043148,131,metrics_not_found,Paid Apps,"[LEAD VIEW] NPF summary API response not captured for ""Paid Apps""",16-04-2026 12:25:01
+7043148,131,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:25:05
+
+7038507,32,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:25:28
+7016876,213,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:26:05
+7052420,216,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:27:26
+7052420,216,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:27:28
+7052420,216,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:27:29
+
+Dr. D.Y. Patil B-School - not found 
+7037219,240,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",16-04-2026 12:26:22
+7037219,240,metrics_not_found,Form Initiated,"[LEAD VIEW] NPF summary API response not captured for ""Form Initiated""",16-04-2026 12:26:55
+7037219,240,metrics_not_found,Paid Apps,"[LEAD VIEW] NPF summary API response not captured for ""Paid Apps""",16-04-2026 12:27:29
+
+7037219,240,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:27:33
+7050157,217,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:27:45
+7050157,217,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:27:47
+7050157,217,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:27:49
+7028744,219,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:28:39
+7028744,219,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:28:41
+7028744,219,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:28:43
+7050096,38,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:28:45
+7051156,39,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:29:13
+
+
+7042543,41,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:30:31
+7004093,42,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:31:00
+7049690,222,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:31:02
+7004254,43,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:31:29
+7004326,44,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:31:58
+7038720,224,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:32:07
+
+
+7005328,46,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:32:48
+7005328,46,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:32:50
+7005328,46,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:32:51
+7042563,47,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:33:09
+7042563,47,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:33:11
+7042563,47,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:33:13
+7041375,227,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:33:30
+7041375,227,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:33:32
+7041375,227,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:33:33
+7041842,228,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:33:50
+7041842,228,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:33:51
+7041842,228,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:33:53
+7007053,280,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:33:57
+7043288,229,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:34:09
+7043288,229,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:34:11
+7043288,229,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:34:13
+
+7054198,293,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:34:12
+7054198,293,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:34:14
+7054198,293,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:34:16
+
+7004602,49,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:34:12
+7022961,239,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:34:30
+7022961,239,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:34:32
+7022961,239,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:34:34
+7037772,294,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:34:34
+7037772,294,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:34:35
+7037772,294,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:34:37
+7051258,50,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:34:41
+7048083,243,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:34:52
+7048083,243,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:34:53
+7048083,243,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:34:55
+7042815,308,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:34:55
+7042815,308,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:34:57
+7042815,308,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:34:59
+7052411,251,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:35:15
+7052411,251,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:35:17
+7052411,251,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:35:19
+7053295,252,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:35:37
+7053295,252,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:35:39
+7053295,252,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:35:41
+7050366,52,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:35:52
+7023960,253,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:35:58
+7023960,253,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:36:00
+7023960,253,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:36:02
+7050952,53,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:36:08
+7050952,53,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:36:09
+7018445,254,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:36:20
+7018445,254,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:36:22
+7018445,254,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:36:24
+7023727,285,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:36:14
+7020344,255,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:36:41
+7020344,255,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:36:43
+7020344,255,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:36:45
+7051233,263,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:36:59
+7051233,263,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:37:01
+7051233,263,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:37:03
+7043176,287,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:37:18
+7036262,273,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:37:26
+7036262,273,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:37:28
+7036262,273,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:37:30
+7051378,299,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:37:46
+7051378,299,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:37:47
+7051378,299,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:37:49
+7005955,58,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:38:35
+7005955,58,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:38:37
+7005955,58,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:38:38
+7004685,59,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:39:07
+7042589,60,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:39:25
+7042589,60,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:39:27
+7042589,60,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:39:29
+7050185,63,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:41:03
+7050804,64,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:41:32
+7014919,304,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:42:27
+7014919,304,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:42:29
+7050097,67,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:43:10
+7006265,68,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:43:39
+7008395,69,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:44:08
+7050123,70,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:44:38
+7051154,72,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:45:39
+7051158,75,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:47:08
+7050147,76,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:47:45
+7011593,77,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:48:15
+7011635,78,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:48:43
+7014736,79,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:49:12
+7050090,81,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:50:15
+7050671,82,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",16-04-2026 12:51:26
+7050671,82,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 12:51:28
+7050671,82,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:51:30
+7050671,82,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:51:32
+7042774,84,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:55:54
+7042774,84,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:55:57
+7042805,85,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:56:26
+7005641,86,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:56:55
+7016350,87,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:57:24
+7042884,88,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:57:53
+7050088,89,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 12:58:22
+7042997,92,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 12:59:49
+7050091,93,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:00:24
+7052699,96,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:02:05
+7043003,98,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:03:13
+7045618,100,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:03:44
+7043123,102,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:04:46
+7043045,104,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:05:48
+7050130,105,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:06:19
+7043259,109,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:08:29
+7019167,111,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:09:33
+7004509,113,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:10:37
+7042268,132,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 13:11:12
+7042268,132,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 13:11:13
+7042268,132,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:11:15
+7044494,155,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:11:27
+7031544,157,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 13:12:25
+7032533,134,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:12:45
+7037246,135,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:13:17
+7037966,159,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:13:36
+7050846,138,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:14:51
+7050726,162,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:15:16
+7052702,163,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 13:15:32
+7052702,163,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 13:15:34
+7004951,140,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:15:52
+7010229,164,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 13:15:54
+7010229,164,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 13:15:56
+7010229,164,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:15:58
+
+
+7050127,142,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 13:16:39
+7050127,142,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 13:16:41
+
+
+
+
+
+7005793,168,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:17:41
+7005965,169,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:18:14
+7015717,146,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:19:01
+7004704,171,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:19:15
+7053549,149,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:21:03
+7042695,175,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:21:23
+
+
+7042719,178,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 13:22:33
+7042719,178,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 13:22:35
+7042719,178,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:22:37
+7050109,153,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:23:14
+
+
+*
+7041344,154,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 13:23:37
+
+
+7020933,183,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:25:12
+
+
+7021698,256,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:30:55
+7050733,257,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:31:23
+7007176,278,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:31:53
+7050124,284,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:32:23
+7042404,289,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:32:54
+7042285,290,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:33:25
+7021468,298,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:33:54
+
+
+// not found 
+7039522,303,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",16-04-2026 13:34:31
+7039522,303,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",16-04-2026 13:34:32
+7039522,303,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",16-04-2026 13:34:34
