@@ -153,7 +153,10 @@ export class OverallClientReportService {
   }
 
   private async fetchClientsFromLms(clientIds: number[]): Promise<any[]> {
-    const backendUrl = 'http://127.0.0.1:9001';
+    const backendUrl = (process.env.LMS_BACKEND_URL || 'http://127.0.0.1:9001').replace(
+      /\/+$/,
+      '',
+    );
     const apiKey = process.env.REPORTING_METADATA_API_SECRET_KEY || 'kapp-crawler-reports';
     try {
       this.logger.log(`📡 Fetching client metadata from LMS API: ${backendUrl}`);
