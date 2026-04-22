@@ -1,6 +1,5 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Cron, SchedulerRegistry } from '@nestjs/schedule';
-import { CronJob } from 'cron';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Not, Repository } from 'typeorm';
 import * as fs from 'fs/promises';
@@ -51,7 +50,7 @@ export function buildNpfFunnelCronExpression(): string {
 }
 
 @Injectable()
-export class ScrapeSchedulerService implements OnModuleInit {
+export class ScrapeSchedulerService {
   private readonly logger = new Logger(ScrapeSchedulerService.name);
   private lastLeadsDateKey: string | null = null;
   private lastSummaryDateKey: string | null = null;
@@ -70,23 +69,7 @@ export class ScrapeSchedulerService implements OnModuleInit {
     private readonly scrapperService: ScrapperService,
     private readonly reportService: OverallClientReportService,
     private readonly playwrightService: PlaywrightService,
-    private readonly schedulerRegistry: SchedulerRegistry,
   ) { }
-
-  onModuleInit() {
-    const expression = buildNpfFunnelCronExpression();
-    this.logger.log('--------------------------------------------------');
-    this.logger.log(`🔍 DYNAMIC CRON REGISTRATION:`);
-    this.logger.log(`NPF Funnel scheduled for: ${expression} (Asia/Kolkata)`);
-    this.logger.log('--------------------------------------------------');
-
-    // Create the cron job programmatically
-    const job = new CronJob(expression, () => {
-      this.handleCronNpfFunnel();
-    }, null, true, 'Asia/Kolkata');
-
-    this.schedulerRegistry.addCronJob('daily-npf-funnel-scrape', job);
-  }
 
   private getEnvBool(name: string, defaultValue: boolean): boolean {
     const raw = (process.env[name] ?? '').trim().toLowerCase();
@@ -225,7 +208,7 @@ export class ScrapeSchedulerService implements OnModuleInit {
     }
   }
 
-  // This is now triggered by the dynamic CronJob created in onModuleInit
+  // Kept for optional direct cron usage; primary trigger is cron.service.ts.
   async handleCronNpfFunnel(): Promise<void> {
     this.logger.log('⏰ Cron triggered: NPF Funnel Scrape');
     if (
@@ -620,6 +603,8 @@ export class ScrapeSchedulerService implements OnModuleInit {
 
     const successList: number[] = [];
     const failedList: { client_id: number; error: string }[] = [];
+    const campaignSuccessList: number[] = [];
+    const campaignFailedList: { client_id: number; error: string }[] = [];
     const warningRows: NpfScrapeWarning[] = [];
     const retryClientIds = new Set<number>();
     const warningClientIds = new Set<number>();
@@ -630,6 +615,10 @@ export class ScrapeSchedulerService implements OnModuleInit {
       failed: 0,
       skipped: 0,
     };
+    const isLikelySessionLogoutError = (msg: string): boolean =>
+      /(login|sign[\s-]?in|session|unauthori[sz]ed|forbidden|token|expired|401|403)/i.test(
+        msg,
+      );
     const logProgress = (label: string, row?: ClientWiseEntity) => {
       this.logger.log(
         `📈 NPF ${trigger} progress: ${progress.processed}/${progress.total} processed | ` +
@@ -664,8 +653,9 @@ export class ScrapeSchedulerService implements OnModuleInit {
         let browserContext;
         try {
           browserContext = await this.playwrightService.createBrowser({ useProxy: false });
-          const { page, browser, context } = browserContext;
+          const { page } = browserContext;
           let isFirstInGroup = true;
+          const leadCompletedRows: ClientWiseEntity[] = [];
 
           for (const row of group) {
             const summaryConfig = await this.summaryConfigRepository.findOne({
@@ -681,14 +671,16 @@ export class ScrapeSchedulerService implements OnModuleInit {
             const maxRetries = 3;
             let success = false;
             let lastError = '';
+            let forceLoginForRetry = false;
 
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
               try {
-                this.logger.log(`\n=> Scraping NPF Funnel for client_wise_id=${row.id} client_id=${row.client_id} (Attempt ${attempt}/${maxRetries}, Skipping Login: ${!isFirstInGroup})`);
+                const skipLogin = !isFirstInGroup && !forceLoginForRetry;
+                this.logger.log(`\n=> Scraping NPF Funnel for client_wise_id=${row.id} client_id=${row.client_id} (Attempt ${attempt}/${maxRetries}, Skipping Login: ${skipLogin})`);
 
                 const npfResult = await this.scrapperService.scrapeNpfFunnelData(
                   { client_wise_id: row.id } as any,
-                  { page, skipLogin: !isFirstInGroup }
+                  { page, skipLogin }
                 );
                 if (npfResult?.warnings?.length) {
                   warningRows.push(...npfResult.warnings);
@@ -699,12 +691,19 @@ export class ScrapeSchedulerService implements OnModuleInit {
                 isFirstInGroup = false;
                 success = true;
                 successList.push(row.client_id);
+                leadCompletedRows.push(row);
                 progress.processed += 1;
                 progress.success += 1;
                 logProgress('completed', row);
                 break; // If successful, immediately break out of the retry loop
               } catch (err) {
                 lastError = err instanceof Error ? err.message : String(err);
+                if (isLikelySessionLogoutError(lastError)) {
+                  forceLoginForRetry = true;
+                  this.logger.warn(
+                    `Detected possible session logout for client_id=${row.client_id}; next retry will force login.`,
+                  );
+                }
                 this.logger.error(
                   `NPF Funnel failed for client_wise_id=${row.id} on attempt ${attempt}`,
                   err instanceof Error ? err.stack : undefined,
@@ -724,6 +723,57 @@ export class ScrapeSchedulerService implements OnModuleInit {
               logProgress('failed after max retries', row);
             }
           }
+
+          if (leadCompletedRows.length) {
+            this.logger.log(
+              `\n--- 📊 Campaign summary phase for CRM Group [${group[0].credentials!.login}] (${leadCompletedRows.length} client(s), no filters) ---`,
+            );
+          }
+
+          for (const row of leadCompletedRows) {
+            const maxCampaignRetries = 2;
+            let campaignDone = false;
+            let campaignLastError = '';
+            let forceCampaignLoginForRetry = false;
+
+            for (let attempt = 1; attempt <= maxCampaignRetries; attempt += 1) {
+              try {
+                const skipLogin = !forceCampaignLoginForRetry;
+                this.logger.log(
+                  `=> Campaign scrape client_wise_id=${row.id} client_id=${row.client_id} (Attempt ${attempt}/${maxCampaignRetries}, skipLogin=${skipLogin})`,
+                );
+                await this.scrapperService.scrapeNpfCampaignDetailsViaApi(
+                  { client_wise_id: row.id } as any,
+                  { page, skipLogin },
+                );
+                campaignSuccessList.push(row.client_id);
+                campaignDone = true;
+                break;
+              } catch (err) {
+                campaignLastError = err instanceof Error ? err.message : String(err);
+                if (isLikelySessionLogoutError(campaignLastError)) {
+                  forceCampaignLoginForRetry = true;
+                  this.logger.warn(
+                    `Detected possible session logout during campaign phase for client_id=${row.client_id}; next retry will force login.`,
+                  );
+                }
+                this.logger.error(
+                  `Campaign summary scrape failed for client_wise_id=${row.id} on attempt ${attempt}`,
+                  err instanceof Error ? err.stack : undefined,
+                );
+                if (attempt < maxCampaignRetries) {
+                  await new Promise((resolve) => setTimeout(resolve, 2000));
+                }
+              }
+            }
+
+            if (!campaignDone) {
+              campaignFailedList.push({
+                client_id: row.client_id,
+                error: campaignLastError || 'campaign summary scrape failed',
+              });
+            }
+          }
         } catch (err) {
           this.logger.error(`Critical error while processing CRM Group: ${hash}`, err instanceof Error ? err.stack : undefined);
         } finally {
@@ -740,6 +790,14 @@ export class ScrapeSchedulerService implements OnModuleInit {
     this.logger.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     this.logger.log(`📊 NPF FUNNEL RUN SUMMARY`);
     this.logger.log(`✅ Success: ${successList.length} clients (${successList.join(', ')})`);
+    this.logger.log(
+      `📌 Campaign summary (client_wise_summary_data): success=${campaignSuccessList.length} failed=${campaignFailedList.length}`,
+    );
+    if (campaignFailedList.length > 0) {
+      campaignFailedList.forEach((f) =>
+        this.logger.error(`   - Campaign scrape failed for client ${f.client_id}: ${f.error}`),
+      );
+    }
     if (warningRows.length > 0) {
       this.logger.warn(`⚠️ Warnings: ${warningRows.length} entries`);
       warningRows.forEach((w) =>

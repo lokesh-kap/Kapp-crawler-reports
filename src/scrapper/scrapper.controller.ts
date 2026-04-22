@@ -20,5 +20,10 @@ export class ScrapperController {
   scrapeNpfFunnel(@Body() dto: ScrapeTargetDto) {
     return this.scrapperService.scrapeNpfFunnelData(dto);
   }
+
+  @Post('npf-campaign-api')
+  scrapeNpfCampaignApi(@Body() dto: ScrapeTargetDto) {
+    return this.scrapperService.scrapeNpfCampaignDetailsViaApi(dto);
+  }
 }
 

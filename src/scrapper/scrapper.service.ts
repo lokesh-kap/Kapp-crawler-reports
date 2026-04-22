@@ -72,6 +72,11 @@ type ApplyFiltersResult = {
   failedCount: number;
   failedItems: string[];
 };
+type ScrapeTargetRunOptions = {
+  page?: Page;
+  skipLogin?: boolean;
+  skipAllFilters?: boolean;
+};
 
 @Injectable()
 export class ScrapperService implements OnModuleInit {
@@ -1327,6 +1332,469 @@ export class ScrapperService implements OnModuleInit {
     return this.scrapeTarget(dto, 'summary');
   }
 
+  async scrapeSummaryInSession(dto: ScrapeTargetDto, opts: ScrapeTargetRunOptions) {
+    return this.scrapeTarget(dto, 'summary', opts);
+  }
+
+  async scrapeNpfCampaignDetailsViaApi(
+    dto: ScrapeTargetDto,
+    opts?: { page?: import('playwright').Page; skipLogin?: boolean },
+  ) {
+    this.logger.log(`Starting NPF campaign details API scrape for client_id=${dto.client_id ?? 'n/a'}`);
+
+    let clientWise: ClientWiseEntity | null = null;
+    if (dto.client_wise_id) {
+      clientWise = await this.clientWiseRepository.findOne({ where: { id: dto.client_wise_id } });
+    } else if (dto.client_id && dto.year) {
+      clientWise = await this.clientWiseRepository.findOne({
+        where: { client_id: dto.client_id, year: dto.year },
+        order: { id: 'DESC' },
+      });
+    }
+    if (!clientWise) throw new NotFoundException('Client config not found');
+
+    const summaryConfig = await this.summaryConfigRepository.findOne({
+      where: { client_wise_id: clientWise.id, is_active: true },
+    });
+    if (!summaryConfig) throw new NotFoundException('No active NPF summary config found');
+
+    const browser = opts?.page
+      ? null
+      : await this.playwrightService.createBrowser({ useProxy: dto.use_proxy ?? false });
+    const page = opts?.page ?? browser!.page;
+    const apiPageLimit = this.getEnvInt('SCRAPER_NPF_CAMPAIGN_API_LIMIT', 3000);
+
+    const apiRows: Record<string, unknown>[] = [];
+    const seenCampaigns = new Set<string>();
+    let apiSeq = 0;
+    let apiTotal = 0;
+    let firstApiPage = 0;
+    let sawNonJsonCampaignPayload = false;
+    let rewroteCampaignPayload = false;
+    const campaignApiState: {
+      requestTemplate: {
+        url: string;
+        headers: Record<string, string>;
+        payload: Record<string, unknown>;
+      } | null;
+    } = { requestTemplate: null };
+    const appendCampaignRows = (
+      list: Array<Record<string, unknown>>,
+      pageNo: number,
+    ) => {
+      for (const item of list) {
+        const source = String(item.source ?? '').trim();
+        const medium = String(item.medium ?? '').trim();
+        const campaignName = String(item.name ?? '').trim();
+        const rowKey = `${pageNo}|${source}|${medium}|${campaignName}`;
+        if (seenCampaigns.has(rowKey)) continue;
+        seenCampaigns.add(rowKey);
+        apiRows.push({
+          source: source || null,
+          medium: medium || null,
+          campaign_name: campaignName || null,
+          primary_leads: this.normalizeNpfMetricValue(item.primary),
+          secondary_leads: this.normalizeNpfMetricValue(item.secondary),
+          tertiary_leads: this.normalizeNpfMetricValue(item.tertiary),
+          total_instances: this.normalizeNpfMetricValue(item.total),
+          verified_leads: this.normalizeNpfMetricValue(item.verified),
+          unverified_leads: this.normalizeNpfMetricValue(item.unverified),
+          form_initiated: this.normalizeNpfMetricValue(item.form_initiated),
+          payment_approved: this.normalizeNpfMetricValue(item.payment_approved),
+          enrolments: this.normalizeNpfMetricValue(item.enrolment_count),
+          data_source: 'npf_campaign_api',
+        });
+      }
+    };
+    const rewriteCampaignPayloadLimit = (raw: string): string | null => {
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+        const keys = [
+          'limit',
+          'pageSize',
+          'page_size',
+          'per_page',
+          'perPage',
+          'size',
+          'rows',
+        ];
+        let touched = false;
+        for (const key of keys) {
+          if (Object.prototype.hasOwnProperty.call(parsed, key)) {
+            parsed[key] = apiPageLimit;
+            touched = true;
+          }
+        }
+        if (!touched) {
+          parsed.limit = apiPageLimit;
+        }
+        return JSON.stringify(parsed);
+      } catch {
+        return null;
+      }
+    };
+    const campaignRouteHandler = async (route: import('playwright').Route) => {
+      const req = route.request();
+      const postData = req.postData() ?? '';
+      if (!postData) {
+        await route.continue();
+        return;
+      }
+      const rewrittenPostData = rewriteCampaignPayloadLimit(postData);
+      if (!rewrittenPostData) {
+        sawNonJsonCampaignPayload = true;
+        await route.continue();
+        return;
+      }
+
+      const headers = { ...req.headers() } as Record<string, string>;
+      delete headers['content-length'];
+      delete headers['Content-Length'];
+      rewroteCampaignPayload = true;
+      await route.continue({ headers, postData: rewrittenPostData });
+    };
+    const campaignApiListener = async (response: any) => {
+      try {
+        const req = response.request?.();
+        const method = req?.method?.();
+        const url = response.url?.() ?? '';
+        if (
+          method === 'POST' &&
+          url.includes('/publishers/v1/getCampaignDetailsViewList') &&
+          response.status?.() === 200
+        ) {
+          const payloadRaw = req?.postData?.() ?? '';
+          if (!campaignApiState.requestTemplate && payloadRaw) {
+            try {
+              const payloadObj = JSON.parse(payloadRaw) as Record<string, unknown>;
+              campaignApiState.requestTemplate = {
+                url,
+                headers: { ...(req?.headers?.() ?? {}) } as Record<string, string>,
+                payload: payloadObj,
+              };
+            } catch {
+              // ignore: encrypted/non-json payload
+            }
+          }
+          const body = (await response.json().catch(() => null)) as
+            | Record<string, unknown>
+            | null;
+          const data = (body?.data as Record<string, unknown> | undefined) ?? {};
+          const list = Array.isArray(data.list)
+            ? (data.list as Array<Record<string, unknown>>)
+            : [];
+          const total = Number(data.total ?? 0);
+          if (Number.isFinite(total) && total > 0) {
+            apiTotal = total;
+          }
+          const pageNo = Number(data.page ?? 0);
+          firstApiPage = pageNo;
+          appendCampaignRows(list, pageNo);
+          apiSeq += 1;
+          this.logger.log(
+            `Captured campaign API response (seq=${apiSeq}, page=${pageNo}, rows=${list.length}, unique_total=${apiRows.length})`,
+          );
+        }
+      } catch {
+        // best effort only
+      }
+    };
+
+    page.on('response', campaignApiListener);
+    try {
+      await page.route('**/publishers/v1/getCampaignDetailsViewList', campaignRouteHandler);
+      if (!opts?.skipLogin) {
+        await this.login(page, dto, clientWise);
+      } else {
+        this.logger.log(`Skipping login, reusing existing session for ${clientWise.client_id}`);
+      }
+
+      await page.goto(summaryConfig.url, { waitUntil: 'load', timeout: 60000 });
+      await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 15000 }).catch(() => null);
+      await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+      await page.waitForTimeout(1500);
+
+      // Apply summary config steps (institute/source/etc.) before Search.
+      const summaryFilters = [...(summaryConfig.filters ?? [])];
+      if (summaryFilters.length > 0) {
+        this.logger.log(
+          `Applying summary config filters before campaign API fetch: count=${summaryFilters.length}`,
+        );
+        await this.applyFilters(page, summaryFilters, {
+          clientId: clientWise.client_id,
+          throwOnFailure: true,
+          contextLabel: 'npf_campaign_api_base_filters',
+        });
+        await this.waitBetweenStepPhases(page, 'after npf campaign base filters');
+      } else {
+        this.logger.warn(
+          `No filters found in client_wise_summary_config for client_wise_id=${clientWise.id}; proceeding without filter apply.`,
+        );
+      }
+
+      // Trigger Search once, then collect paginated API calls.
+      const searchBtn = page
+        .locator("//button[contains(., 'Search')] | //a[contains(., 'Search')]")
+        .first();
+      if (await searchBtn.isVisible().catch(() => false)) {
+        await searchBtn.click({ force: true }).catch(() => null);
+      }
+
+      // Wait for first API response.
+      const firstSeq = apiSeq;
+      const waitStart = Date.now();
+      while (Date.now() - waitStart < 12000 && apiSeq <= firstSeq) {
+        await page.waitForTimeout(400);
+      }
+
+      // After first Search response, force rows-per-page as high as possible.
+      // Prefer requested limit (3000), and inject the option when UI only has 10/20/50/100.
+      const beforeRppSeq = apiSeq;
+      const rppResult = await this.setNpfCampaignRowsPerPage(page, apiPageLimit);
+      if (rppResult.applied) {
+        await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 15000 }).catch(() => null);
+        await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+        const started = Date.now();
+        while (Date.now() - started < 8000 && apiSeq <= beforeRppSeq) {
+          await page.waitForTimeout(300);
+        }
+        this.logger.log(
+          `Campaign rows-per-page applied: selected=${rppResult.selected ?? 'unknown'} (requested=${apiPageLimit}, injected=${rppResult.injected})`,
+        );
+      } else {
+        this.logger.warn('Campaign rows-per-page selector not found; continuing with default page size.');
+      }
+
+      if (sawNonJsonCampaignPayload) {
+        this.logger.warn(
+          'Campaign API payload is non-JSON; could not force limit=3000. Falling back to UI pagination.',
+        );
+      } else if (rewroteCampaignPayload) {
+        this.logger.log(`Campaign API pagination limit forced to ${apiPageLimit} rows/request.`);
+      }
+
+      // API-first pagination: if total > first page, call remaining pages directly
+      // via authenticated request context (does not depend on UI Next visibility).
+      if (
+        campaignApiState.requestTemplate &&
+        apiTotal > 0 &&
+        apiRows.length < apiTotal
+      ) {
+        const template = campaignApiState.requestTemplate;
+        const expectedPages = Math.max(1, Math.ceil(apiTotal / apiPageLimit));
+        const pageKey =
+          ['page', 'pageNo', 'page_no', 'page_number'].find((k) =>
+            Object.prototype.hasOwnProperty.call(template.payload, k),
+          ) ?? 'page';
+        const limitKey =
+          ['limit', 'pageSize', 'page_size', 'per_page', 'perPage', 'size', 'rows'].find((k) =>
+            Object.prototype.hasOwnProperty.call(template.payload, k),
+          ) ?? 'limit';
+        const requestHeaders = Object.entries(template.headers).reduce(
+          (acc, [k, v]) => {
+            const key = String(k).toLowerCase();
+            if (
+              key === 'content-type' ||
+              key === 'authorization' ||
+              key.startsWith('x-') ||
+              key === 'accept' ||
+              key === 'origin' ||
+              key === 'referer'
+            ) {
+              acc[k] = String(v);
+            }
+            return acc;
+          },
+          {} as Record<string, string>,
+        );
+        if (!requestHeaders['content-type']) {
+          requestHeaders['content-type'] = 'application/json;charset=UTF-8';
+        }
+
+        const pagesToFetch = Array.from({ length: expectedPages }, (_, idx) => idx).filter(
+          (p) => p !== firstApiPage,
+        );
+        for (const p of pagesToFetch) {
+          if (apiRows.length >= apiTotal) break;
+          const payload = { ...template.payload };
+          payload[limitKey] = apiPageLimit;
+          payload[pageKey] = p;
+          const apiResponse = await page.context().request
+            .post(template.url, {
+              headers: requestHeaders,
+              data: payload,
+            })
+            .catch(() => null);
+          if (!apiResponse || !apiResponse.ok()) {
+            this.logger.warn(`Direct API page fetch failed for page=${p}`);
+            continue;
+          }
+          const body = (await apiResponse.json().catch(() => null)) as Record<string, unknown> | null;
+          const data = (body?.data as Record<string, unknown> | undefined) ?? {};
+          const list = Array.isArray(data.list) ? (data.list as Array<Record<string, unknown>>) : [];
+          appendCampaignRows(list, p);
+          this.logger.log(
+            `Direct campaign API page fetched: page=${p}, rows=${list.length}, unique_total=${apiRows.length}`,
+          );
+        }
+      }
+
+      const nextButtonXpath = this.computeNextButtonXpath(dto);
+      const maxPages = this.getEnvInt('SCRAPER_NPF_CAMPAIGN_MAX_PAGES', 40);
+      for (let pageIndex = 1; pageIndex <= maxPages; pageIndex += 1) {
+        if (apiTotal > 0) {
+          const expectedPages = Math.max(1, Math.ceil(apiTotal / apiPageLimit));
+          if (apiSeq >= expectedPages) {
+            this.logger.log(
+              `Campaign API pagination completed: total=${apiTotal}, limit=${apiPageLimit}, pages=${expectedPages}`,
+            );
+            break;
+          }
+        }
+
+        const pagerStatus = await page
+          .locator('ul.pagination li.pt-1')
+          .first()
+          .textContent()
+          .catch(() => null);
+        if (pagerStatus) {
+          const m = pagerStatus.replace(/\s+/g, ' ').match(/(\d+)\s*-\s*(\d+)\s*of\s*(\d+)/i);
+          if (m) {
+            const end = Number(m[2]);
+            const total = Number(m[3]);
+            if (Number.isFinite(end) && Number.isFinite(total) && end >= total) {
+              this.logger.log(`Campaign UI pager reached end (${end}/${total}); stopping pagination.`);
+              break;
+            }
+          }
+        }
+
+        const nextBtn = page
+          .locator("ul.pagination li.page-item:not(.disabled) a.page-link:has(i.fa-angle-right)")
+          .first();
+        const nextBtnFallback = page.locator(`xpath=${nextButtonXpath}`).first();
+        const isVisible = await nextBtn.isVisible().catch(() => false);
+        const targetNextBtn = isVisible ? nextBtn : nextBtnFallback;
+        const targetVisible = isVisible || (await nextBtnFallback.isVisible().catch(() => false));
+        if (!targetVisible) break;
+        const isDisabled = await targetNextBtn
+          .evaluate((el) => {
+            const h = el as HTMLElement;
+            const ariaDisabled = h.getAttribute('aria-disabled');
+            const cls = h.className || '';
+            return (
+              (h as HTMLButtonElement).disabled === true ||
+              ariaDisabled === 'true' ||
+              /\bdisabled\b/i.test(cls)
+            );
+          })
+          .catch(() => false);
+        if (isDisabled) break;
+
+        const beforeSeq = apiSeq;
+        const clicked = await targetNextBtn.click({ force: true }).then(() => true).catch(() => false);
+        if (!clicked) break;
+        await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 15000 }).catch(() => null);
+        await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+
+        const started = Date.now();
+        while (Date.now() - started < 8000 && apiSeq <= beforeSeq) {
+          await page.waitForTimeout(350);
+        }
+        if (apiSeq <= beforeSeq) {
+          this.logger.warn(`No new campaign API response after Next click; stopping at UI page=${pageIndex}`);
+          break;
+        }
+      }
+
+      if (!apiRows.length) {
+        this.logger.warn(`No campaign rows captured from API for client_id=${clientWise.client_id}`);
+        return { saved: 0, captured: 0 };
+      }
+
+      const saveResult = await this.saveScrapedDataDirectly({
+        target: 'summary',
+        rows: apiRows,
+        meta: {
+          client_id: clientWise.client_id,
+          year: clientWise.year,
+          user_id: clientWise.user_id,
+          config_id: clientWise.config_id!,
+        },
+      });
+
+      this.logger.log(
+        `Campaign API scrape completed for client_id=${clientWise.client_id}: captured=${apiRows.length}, saved=${saveResult?.saved ?? 0}`,
+      );
+      return { saved: saveResult?.saved ?? 0, captured: apiRows.length, api_calls: apiSeq };
+    } catch (err) {
+      this.npfError(
+        'NPF Campaign API scrape failed',
+        clientWise.client_id,
+        err instanceof Error ? err.stack : undefined,
+      );
+      throw err;
+    } finally {
+      page.off('response', campaignApiListener);
+      await page.unroute('**/publishers/v1/getCampaignDetailsViewList', campaignRouteHandler).catch(() => null);
+      if (!opts?.page) {
+        const closeTask = async () => {
+          await browser?.page?.close().catch(() => null);
+          await browser?.context?.close().catch(() => null);
+          await browser?.browser?.close().catch(() => null);
+        };
+        await Promise.race([closeTask(), new Promise((resolve) => setTimeout(resolve, 5000))]);
+      }
+    }
+  }
+
+  private async setNpfCampaignRowsPerPage(
+    page: Page,
+    desiredLimit: number,
+  ): Promise<{ applied: boolean; selected: number | null; injected: boolean }> {
+    const result = await page
+      .evaluate((desired) => {
+        const select = document.querySelector(
+          'select.custom-select.custom-select-sm.rounded-0.rpp',
+        ) as HTMLSelectElement | null;
+        if (!select) return { applied: false, selected: null, injected: false };
+
+        const options = Array.from(select.options).map((opt) => ({
+          value: String(opt.value ?? '').trim(),
+          num: Number(String(opt.value ?? '').trim()),
+        }));
+        const validNumbers = options
+          .map((o) => o.num)
+          .filter((n) => Number.isFinite(n) && n > 0);
+        const hasDesired = validNumbers.includes(desired);
+        let selected = hasDesired
+          ? desired
+          : validNumbers.length
+            ? Math.max(...validNumbers)
+            : null;
+        let injected = false;
+
+        if (!hasDesired && desired > 0) {
+          // Some pages only render 10/20/50/100; inject desired option and select it.
+          const opt = document.createElement('option');
+          opt.value = String(desired);
+          opt.textContent = ` ${desired} `;
+          select.appendChild(opt);
+          selected = desired;
+          injected = true;
+        }
+
+        if (!selected) return { applied: false, selected: null, injected };
+        select.value = String(selected);
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        return { applied: true, selected, injected };
+      }, desiredLimit)
+      .catch(() => ({ applied: false, selected: null, injected: false }));
+    return result;
+  }
+
   private normalizeKey(key: string): string {
     return key
       .trim()
@@ -2217,7 +2685,11 @@ export class ScrapperService implements OnModuleInit {
     return e;
   }
 
-  private async scrapeTarget(dto: ScrapeTargetDto, target: TargetKind) {
+  private async scrapeTarget(
+    dto: ScrapeTargetDto,
+    target: TargetKind,
+    opts: ScrapeTargetRunOptions = {},
+  ) {
     this.logger.log(
       `Scrape request received: target=${target}, client_wise_id=${dto.client_wise_id ?? 'n/a'}, ` +
       `client_id=${dto.client_id ?? 'n/a'}, year=${dto.year ?? 'n/a'}, config_id=${dto.config_id ?? 'n/a'}`,
@@ -2268,11 +2740,11 @@ export class ScrapperService implements OnModuleInit {
     const targetConfig =
       target === 'leads'
         ? await this.leadsConfigRepository.findOne({
-          where: { client_wise_id: clientWise.id },
-        })
+            where: { client_wise_id: clientWise.id, is_active: true },
+          })
         : await this.summaryConfigRepository.findOne({
-          where: { client_wise_id: clientWise.id },
-        });
+            where: { client_wise_id: clientWise.id, is_active: true },
+          });
 
     if (!targetConfig) {
       throw new NotFoundException(
@@ -2285,14 +2757,22 @@ export class ScrapperService implements OnModuleInit {
       `is_advance_filters=${(targetConfig as any).is_advance_filters}, has_extra_steps=${(targetConfig as any).has_extra_steps}`,
     );
 
-    const browser = await this.playwrightService.createBrowser({
-      useProxy: resolvedUseProxy,
-    });
+    const browser = opts.page
+      ? null
+      : await this.playwrightService.createBrowser({
+          useProxy: resolvedUseProxy,
+        });
 
-    const page = browser.page;
+    const page = opts.page ?? browser!.page;
     try {
-      // 1) Always login first
-      await this.login(page, dto, clientWise);
+      // 1) Login unless we're explicitly reusing an authenticated session.
+      if (!opts.skipLogin) {
+        await this.login(page, dto, clientWise);
+      } else {
+        this.logger.log(
+          `Skipping login for ${target}; reusing session for client_id=${clientWise.client_id}`,
+        );
+      }
 
       const itemXpath = this.computeItemXpath(dto, targetConfig);
       let nextButtonXpath = this.computeNextButtonXpath(dto);
@@ -2309,37 +2789,53 @@ export class ScrapperService implements OnModuleInit {
 
       // 3) If advanced filters are enabled, open the advanced UI before filling.
       // 3) Step executor flow (preferred). Fallback to existing filter arrays for backward compatibility.
-      const stepCount = await this.stepRepository.count({
-        where: { client_wise_id: clientWise.id, config_type: target, is_active: true },
-      });
+      // For summary scraping, use client_wise_summary_config as the source of steps/filters.
+      // Keep client_wise_step execution for leads only.
+      const useLegacyStepTable = target !== 'summary';
+      const stepCount = useLegacyStepTable
+        ? await this.stepRepository.count({
+            where: { client_wise_id: clientWise.id, config_type: target, is_active: true },
+          })
+        : 0;
+      if (!useLegacyStepTable) {
+        this.logger.log(
+          'Summary flow: using client_wise_summary_config filters/steps (client_wise_step bypassed).',
+        );
+      }
 
-      // Always apply base filters JSON first.
-      const normalItems = [...(targetConfig.filters ?? [])];
-      await this.applyFilters(page, normalItems);
-      await this.waitBetweenStepPhases(page, 'after base filters');
+      if (opts.skipAllFilters) {
+        this.logger.log(
+          `Skipping all filters/steps for ${target} (campaign fetch without filters requested)`,
+        );
+      } else {
+        // Always apply base filters JSON first.
+        const normalItems = [...(targetConfig.filters ?? [])];
+        await this.applyFilters(page, normalItems);
+        await this.waitBetweenStepPhases(page, 'after base filters');
 
-      // Then advanced phase.
-      if ((targetConfig as any).is_advance_filters) {
-        await this.openAdvancedFiltersIfNeeded(page, dto, targetConfig);
-        if (stepCount > 0) {
-          await this.executeStepGroup(page, clientWise.id, target, 'advanced');
-          await this.waitBetweenStepPhases(page, 'after advanced steps');
+        // Then advanced phase.
+        if ((targetConfig as any).is_advance_filters) {
+          await this.openAdvancedFiltersIfNeeded(page, dto, targetConfig);
+        if (useLegacyStepTable && stepCount > 0) {
+            await this.executeStepGroup(page, clientWise.id, target, 'advanced');
+            await this.waitBetweenStepPhases(page, 'after advanced steps');
+          }
         }
-      }
 
-      // Then normal step group (if configured).
-      if (stepCount > 0) {
-        await this.executeStepGroup(page, clientWise.id, target, 'normal');
-        await this.waitBetweenStepPhases(page, 'after normal steps');
-      }
+        // Then normal step group (if configured).
+      if (useLegacyStepTable && stepCount > 0) {
+          await this.executeStepGroup(page, clientWise.id, target, 'normal');
+          await this.waitBetweenStepPhases(page, 'after normal steps');
+        }
 
-      // Extra steps: run whenever the step executor is used (same as normal). Rows are loaded
-      // from DB by group; executeStepGroup no-ops if there are none. Do not gate on
-      // has_extra_steps — that flag can drift false while extra rows still exist, which
-      // skipped date/limit follow-up steps after normal steps.
-      if (stepCount > 0) {
-        await this.executeStepGroup(page, clientWise.id, target, 'extra');
-        await this.waitBetweenStepPhases(page, 'after extra steps');
+        // Extra steps: run whenever the step executor is used (same as normal). Rows are loaded
+        // from DB by group; executeStepGroup no-ops if there are none. Do not gate on
+        // has_extra_steps — that flag can drift false while extra rows still exist, which
+        // skipped date/limit follow-up steps after normal steps.
+      if (useLegacyStepTable && stepCount > 0) {
+          await this.executeStepGroup(page, clientWise.id, target, 'extra');
+          await this.waitBetweenStepPhases(page, 'after extra steps');
+        }
       }
       await this.waitForResults(page, itemXpath);
 
@@ -2473,7 +2969,9 @@ export class ScrapperService implements OnModuleInit {
       this.logger.error(`Scrape ${target} failed`, err instanceof Error ? err.stack : undefined);
       throw err;
     } finally {
-      await browser.browser.close().catch(() => null);
+      if (browser) {
+        await browser.browser.close().catch(() => null);
+      }
     }
   }
 }

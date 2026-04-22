@@ -36,19 +36,24 @@ export class CronService {
     }
   }
 
-  @Cron('0 8 * * *', { timeZone: 'Asia/Kolkata' })
-  async adsSync() {
+  @Cron('58 10 * * *', { timeZone: 'Asia/Kolkata' })
+  async adsAndNpfSync() {
     await this.callApi('/ads-engine/sync', 'Ads Sync');
-  }
-
-  @Cron('30 8 * * *', { timeZone: 'Asia/Kolkata' })
-  async adsAttributionSync() {
-    await this.callApi('/ads-engine/sync-attribution', 'Ads Attribution Sync');
+    await this.callApi('/scraper/schedule/npf-funnel/run', 'NPF Funnel + Campaign Scrape');
   }
 
   @Cron(buildReportCronExpression(), { timeZone: 'Asia/Kolkata' })
   async reportEmailSchedule() {
     if (!this.getEnvBool('REPORT_CRON_ENABLED', true)) return;
-    await this.callApi('/reports/email', 'Daily Report Email');
+    await this.callApi('/reports/email', 'Daily Report Email (Overall + Zone-wise)');
+    await this.callApi('/reports/google-ads-email', 'Google Ads Report Email');
   }
+
+  // Google Ads report cron — commented out during development; trigger manually: POST /reports/google-ads-email
+  // /** 9:15 IST — after ads sync (8:00) and attribution (8:30). On when REPORT_GOOGLE_ADS_CRON_ENABLED=true */
+  // @Cron('15 9 * * *', { timeZone: 'Asia/Kolkata' })
+  // async googleAdsReportSchedule() {
+  //   if (!this.getEnvBool('REPORT_GOOGLE_ADS_CRON_ENABLED', false)) return;
+  //   await this.callApi('/reports/google-ads-email', 'Google Ads Report Email');
+  // }
 }

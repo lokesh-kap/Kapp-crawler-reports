@@ -25,15 +25,6 @@ export class CampaignMetrics {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0, transformer: { to: (v) => v, from: (v) => Number(v) } })
   spend: number;
 
-  @Column({ type: 'int', default: 0 })
-  leads: number;
-
-  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0, transformer: { to: (v) => v, from: (v) => Number(v) } })
-  cpl: number;
-
-  @Column({ type: 'int', default: 0 })
-  applications: number;
-
   @Column({ type: 'decimal', precision: 6, scale: 4, nullable: true, transformer: { to: (v) => v, from: (v) => Number(v) } })
   searchImpressionShare: number;
 

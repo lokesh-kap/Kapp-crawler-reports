@@ -22,6 +22,9 @@ export class CampaignInfo {
   @Column({ type: 'enum', enum: CampaignStatus, default: CampaignStatus.UNKNOWN })
   status: CampaignStatus;
 
+  @Column({ type: 'varchar', nullable: true })
+  providerRawStatus: string | null;
+
   @Column({ type: 'enum', enum: CampaignType, nullable: true })
   campaignType: CampaignType;
 
@@ -33,6 +36,9 @@ export class CampaignInfo {
 
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
   dailyBudget: number;
+
+  @Column({ type: 'date', nullable: true })
+  campaignStartDate: string | null;
 
   @Column()
   adsAccountId: number;

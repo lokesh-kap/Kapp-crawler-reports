@@ -11,7 +11,6 @@ import { BingAdsService } from './providers/bing/bing-ads.service';
 import { AdsEngineService } from './ads-engine.service';
 import { AdsMappingService } from './ads-mapping.service';
 import { AdsEngineController } from './ads-engine.controller';
-import { AttributionService } from './attribution.service';
 
 @Module({
   imports: [
@@ -30,8 +29,7 @@ import { AttributionService } from './attribution.service';
     BingAdsService,
     AdsEngineService,
     AdsMappingService,
-    AttributionService,
   ],
-  exports: [AdsEngineService, AdsMappingService, AttributionService],
+  exports: [AdsEngineService, AdsMappingService],
 })
 export class AdsEngineModule {}
