@@ -18,37 +18,31 @@ export class CronService {
     return `http://localhost:${process.env.PORT ?? 9002}`;
   }
 
-  private getEnvBool(name: string, defaultValue: boolean): boolean {
-    const raw = (process.env[name] ?? '').trim().toLowerCase();
-    if (!raw) return defaultValue;
-    if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
-    if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
-    return defaultValue;
-  }
-
   private async callApi(endpoint: string, label: string) {
     try {
       this.logger.log(`⏰ Cron triggered: ${label}`);
-      const res = await axios.post(`${this.baseUrl}${endpoint}`);
+      await axios.post(`${this.baseUrl}${endpoint}`, null, {
+        timeout: Number(process.env.REPORT_CRON_API_TIMEOUT_MS ?? 300000),
+      });
       this.logger.log(`✅ ${label} completed`);
-    } catch (err) {
-      this.logger.error(`❌ ${label} failed: ${err.message}`);
+    } catch (err: any) {
+      this.logger.error(`❌ ${label} failed: ${err?.message ?? err}`);
     }
   }
 
-  @Cron('0 8 * * *', { timeZone: 'Asia/Kolkata' })
-  async adsSync() {
+  @Cron('05 12 * * *', { timeZone: 'Asia/Kolkata' })
+  async adsAndNpfSync() {
     await this.callApi('/ads-engine/sync', 'Ads Sync');
+    await this.callApi('/scraper/schedule/npf-funnel/run', 'NPF Funnel + Campaign Scrape');
   }
 
-  @Cron('30 8 * * *', { timeZone: 'Asia/Kolkata' })
-  async adsAttributionSync() {
-    await this.callApi('/ads-engine/sync-attribution', 'Ads Attribution Sync');
-  }
-
-  @Cron(buildReportCronExpression(), { timeZone: 'Asia/Kolkata' })
+  @Cron('23 17 * * *', { timeZone: 'Asia/Kolkata' })
   async reportEmailSchedule() {
-    if (!this.getEnvBool('REPORT_CRON_ENABLED', true)) return;
-    await this.callApi('/reports/email', 'Daily Report Email');
+    if (!(`${process.env.REPORT_CRON_ENABLED}` === 'true')) return;
+    const reportCalls = [
+      this.callApi('/reports/email', 'Daily Report Email (Overall + Zone-wise)'),
+      this.callApi('/reports/google-ads-email', 'Google Ads Report Email'),
+    ];
+    await Promise.allSettled(reportCalls);
   }
 }

@@ -2,7 +2,6 @@ import { Controller, Post, Body, UploadedFile, UseInterceptors, Get, Query } fro
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AdsEngineService } from './ads-engine.service';
 import { AdsMappingService } from './ads-mapping.service';
-import { AttributionService } from './attribution.service';
 import { CreateAdsCredentialDto } from './dto/create-ads-credential.dto';
 import { parse } from 'csv-parse/sync';
 
@@ -11,7 +10,6 @@ export class AdsEngineController {
   constructor(
     private readonly adsEngineService: AdsEngineService,
     private readonly adsMappingService: AdsMappingService,
-    private readonly attributionService: AttributionService,
   ) {}
 
   @Post('credentials')
@@ -30,11 +28,6 @@ export class AdsEngineController {
       message: 'Ads synchronization started in background', 
       fullHistory: isFullHistory 
     };
-  }
-
-  @Post('sync-attribution')
-  async syncAttribution() {
-    return this.attributionService.syncAttribution();
   }
 
   @Post('upload-mapping')

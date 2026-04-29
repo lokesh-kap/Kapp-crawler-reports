@@ -29,6 +29,9 @@ export class AdsAccount {
   @Column({ type: 'enum', enum: AccountStatus, default: AccountStatus.ENABLED })
   status: AccountStatus;
 
+  @Column({ type: 'varchar', nullable: true })
+  providerRawStatus: string | null;
+
   @Column({ type: 'enum', enum: AdsProvider })
   provider: AdsProvider;
 

@@ -1,0 +1,231 @@
+client_id,client_wise_id,status,filter_applied,message,occurred_at
+7054179,114,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 10:58:37
+7054179,114,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 10:58:39
+7054179,114,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 10:58:41
+7050168,15,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 10:58:37
+7050168,15,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 10:58:39
+7050168,15,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 10:58:41
+7054075,115,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 10:58:57
+7054075,115,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 10:58:58
+7054075,115,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 10:59:00
+7043350,193,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 10:59:13
+7043350,193,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 10:59:15
+7043350,193,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 10:59:17
+7042605,55,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""ITM University, Raipur"" (name=Client Name)",22-04-2026 10:59:17
+7054182,116,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 10:59:29
+7044103,194,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 10:59:47
+7050982,117,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 10:59:45
+7050982,117,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 10:59:47
+7050982,117,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 10:59:49
+7030030,195,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:00:19
+7052298,120,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""CII - INSTITUTE OF HOSPITALITY"" (name=Client Name)",22-04-2026 11:00:45
+7030296,18,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:00:59
+7030296,18,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:01:01
+7030296,18,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:01:03
+7030296,18,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:01:04
+7053534,121,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:01:14
+7033115,196,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:01:31
+7033115,196,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:01:33
+7033115,196,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:01:34
+7033115,196,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:01:36
+7042489,122,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:01:42
+7042489,122,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:01:46
+7009020,124,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:02:34
+7009020,124,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:02:36
+7009020,124,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:02:38
+7017335,125,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""NSHM Knowledge Campus, Kolkata"" (name=Client Name)",22-04-2026 11:02:59
+7029481,199,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:02:58
+7029481,199,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:03:00
+7029481,199,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:03:02
+7022523,99,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:03:01
+7022523,99,filter_not_found,Form Initiated,"Advance Filter button not found/visible for ""Form Initiated""",22-04-2026 11:03:02
+7022523,99,filter_not_found,Paid Apps,"Advance Filter button not found/visible for ""Paid Applications""",22-04-2026 11:03:03
+7022523,99,filter_not_found,Enrolment Status,"Advance Filter button not found/visible for ""Enrolment Status""",22-04-2026 11:03:04
+7017553,126,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:03:14
+7017553,126,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:03:15
+7017553,126,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:03:17
+7042407,200,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:03:18
+7042407,200,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:03:19
+7042407,200,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:03:21
+7035931,201,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:03:37
+7035931,201,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:03:39
+7035931,201,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:03:41
+7025055,128,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:04:09
+7025055,128,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:04:10
+7025055,128,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:04:12
+7043008,129,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:04:28
+7043008,129,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:04:30
+7043008,129,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:04:31
+7043111,130,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:05:01
+7014402,204,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:05:16
+7043148,131,filter_not_found,None,"client_not_in_dropdown: Filter[2/2] giving up (name=Source): NPF dropdown option not found for ""Kollegeapply"" (name=Source)",22-04-2026 11:05:29
+7037219,240,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""Dr. D.Y. Patil B-School"" (name=Client Name)",22-04-2026 11:05:47
+7053539,241,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""DPGU- SBS & SMR Dr. D. Y. Patil Unitech Society"" (name=Client Name)",22-04-2026 11:06:07
+7051255,206,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:06:04
+7051255,206,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:06:06
+7051255,206,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:06:08
+7017346,242,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""NSHM Knowledge Campus, Kolkata"" (name=Client Name)",22-04-2026 11:06:26
+7053041,207,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:06:24
+7053041,207,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:06:26
+7053041,207,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:06:28
+7500042,230,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:06:40
+7500042,230,filter_not_found,Form Initiated,"Advance Filter button not found/visible for ""Form Initiated""",22-04-2026 11:06:41
+7500042,230,filter_not_found,Paid Apps,"Advance Filter button not found/visible for ""Paid Applications""",22-04-2026 11:06:42
+7500042,230,filter_not_found,Enrolment Status,"Advance Filter button not found/visible for ""Enrolment Status""",22-04-2026 11:06:43
+7034171,249,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:06:44
+7034171,249,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:06:46
+7034171,249,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:06:47
+7005714,209,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:07:32
+7034349,262,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""CII - INSTITUTE OF HOSPITALITY"" (name=Client Name)",22-04-2026 11:07:47
+7007440,210,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:07:49
+7007440,210,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:07:51
+7007440,210,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:07:53
+7042257,19,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:08:02
+7042257,19,filter_not_found,Form Initiated,"Advance Filter button not found/visible for ""Form Initiated""",22-04-2026 11:08:03
+7042257,19,filter_not_found,Paid Apps,"Advance Filter button not found/visible for ""Paid Applications""",22-04-2026 11:08:04
+7042257,19,filter_not_found,Enrolment Status,"Advance Filter button not found/visible for ""Enrolment Status""",22-04-2026 11:08:05
+7054198,293,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:08:06
+7054198,293,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:08:08
+7054198,293,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:08:10
+7037772,294,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""DRIEMS University"" (name=Client Name)",22-04-2026 11:08:32
+7042815,308,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""MIT University, Shillong"" (name=Client Name)",22-04-2026 11:08:54
+7016876,213,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:09:34
+7022524,231,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:10:19
+7022524,231,filter_not_found,Form Initiated,"Advance Filter button not found/visible for ""Form Initiated""",22-04-2026 11:10:20
+7022524,231,filter_not_found,Paid Apps,"Advance Filter button not found/visible for ""Paid Applications""",22-04-2026 11:10:22
+7022524,231,filter_not_found,Enrolment Status,"Advance Filter button not found/visible for ""Enrolment Status""",22-04-2026 11:10:23
+7052420,216,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:10:55
+7052420,216,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:10:57
+7052420,216,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:10:59
+7050157,217,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:11:15
+7050157,217,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:11:17
+7050157,217,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:11:18
+7050131,20,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:11:41
+7050131,20,filter_not_found,Form Initiated,"Advance Filter button not found/visible for ""Form Initiated""",22-04-2026 11:11:42
+7050131,20,filter_not_found,Paid Apps,"Advance Filter button not found/visible for ""Paid Applications""",22-04-2026 11:11:43
+7050131,20,filter_not_found,Enrolment Status,"Advance Filter button not found/visible for ""Enrolment Status""",22-04-2026 11:11:44
+7028744,219,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:12:08
+7028744,219,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:12:09
+7028744,219,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:12:11
+7050488,220,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:12:27
+7050488,220,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:12:28
+7050488,220,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:12:30
+7049690,222,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:13:32
+7050712,232,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:13:58
+7050712,232,filter_not_found,Form Initiated,"Advance Filter button not found/visible for ""Form Initiated""",22-04-2026 11:13:59
+7050712,232,filter_not_found,Paid Apps,"Advance Filter button not found/visible for ""Paid Applications""",22-04-2026 11:14:00
+7050712,232,filter_not_found,Enrolment Status,"Advance Filter button not found/visible for ""Enrolment Status""",22-04-2026 11:14:01
+7032946,21,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:15:21
+7032946,21,filter_not_found,Form Initiated,"Advance Filter button not found/visible for ""Form Initiated""",22-04-2026 11:15:22
+7032946,21,filter_not_found,Paid Apps,"Advance Filter button not found/visible for ""Paid Applications""",22-04-2026 11:15:23
+7032946,21,filter_not_found,Enrolment Status,"Advance Filter button not found/visible for ""Enrolment Status""",22-04-2026 11:15:24
+7038720,224,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:15:16
+7038720,224,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:15:35
+7041375,227,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:17:02
+7041375,227,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:17:04
+7041375,227,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:17:06
+7041842,228,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:17:22
+7041842,228,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:17:23
+7041842,228,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:17:25
+7042756,234,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:17:38
+7042756,234,filter_not_found,Form Initiated,"Advance Filter button not found/visible for ""Form Initiated""",22-04-2026 11:17:39
+7042756,234,filter_not_found,Paid Apps,"Advance Filter button not found/visible for ""Paid Applications""",22-04-2026 11:17:40
+7042756,234,filter_not_found,Enrolment Status,"Advance Filter button not found/visible for ""Enrolment Status""",22-04-2026 11:17:41
+7043288,229,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:17:41
+7043288,229,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:17:43
+7043288,229,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:17:45
+7022961,239,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""Sagar Group of Institutions Bhopal"" (name=Client Name)",22-04-2026 11:18:07
+7048083,243,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""St. Thomas College"" (name=Client Name)",22-04-2026 11:18:29
+7052411,251,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""KOCHI BUSINESS SCHOOL"" (name=Client Name)",22-04-2026 11:18:50
+7050145,22,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:18:58
+7050145,22,filter_not_found,Form Initiated,"Advance Filter button not found/visible for ""Form Initiated""",22-04-2026 11:18:59
+7050145,22,filter_not_found,Paid Apps,"Advance Filter button not found/visible for ""Paid Applications""",22-04-2026 11:19:00
+7050145,22,filter_not_found,Enrolment Status,"Advance Filter button not found/visible for ""Enrolment Status""",22-04-2026 11:19:01
+7053295,252,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""Shivaji College of Engineering and Technology"" (name=Client Name)",22-04-2026 11:19:11
+7023960,253,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""Sarabhai Institute of Science and Technology"" (name=Client Name)",22-04-2026 11:19:32
+7018445,254,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""People Institute of Management Studies"" (name=Client Name)",22-04-2026 11:19:53
+7020344,255,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""Rajagiri Business School"" (name=Client Name)",22-04-2026 11:20:14
+7051233,263,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:20:29
+7051233,263,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:20:31
+7051233,263,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:20:33
+7008672,236,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:21:17
+7008672,236,filter_not_found,Form Initiated,"Advance Filter button not found/visible for ""Form Initiated""",22-04-2026 11:21:18
+7008672,236,filter_not_found,Paid Apps,"Advance Filter button not found/visible for ""Paid Applications""",22-04-2026 11:21:19
+7008672,236,filter_not_found,Enrolment Status,"Advance Filter button not found/visible for ""Enrolment Status""",22-04-2026 11:21:20
+7042299,23,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:22:35
+7042299,23,filter_not_found,Form Initiated,"Advance Filter button not found/visible for ""Form Initiated""",22-04-2026 11:22:36
+7042299,23,filter_not_found,Paid Apps,"Advance Filter button not found/visible for ""Paid Applications""",22-04-2026 11:22:37
+7042299,23,filter_not_found,Enrolment Status,"Advance Filter button not found/visible for ""Enrolment Status""",22-04-2026 11:22:38
+7036262,273,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:24:15
+7036262,273,filter_not_found,Form Initiated,"Advance Filter button not found/visible for ""Form Initiated""",22-04-2026 11:24:16
+7036262,273,filter_not_found,Paid Apps,"Advance Filter button not found/visible for ""Paid Applications""",22-04-2026 11:24:17
+7036262,273,filter_not_found,Enrolment Status,"Advance Filter button not found/visible for ""Enrolment Status""",22-04-2026 11:24:18
+7051378,299,metrics_not_found,None,"[LEAD VIEW] NPF summary API response not captured for ""None""",22-04-2026 11:27:52
+7051378,299,filter_not_found,Form Initiated,"Advance Filter button not found/visible for ""Form Initiated""",22-04-2026 11:27:53
+7051378,299,filter_not_found,Paid Apps,"Advance Filter button not found/visible for ""Paid Applications""",22-04-2026 11:27:54
+7051378,299,filter_not_found,Enrolment Status,"Advance Filter button not found/visible for ""Enrolment Status""",22-04-2026 11:27:55
+7042268,132,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:53:08
+7042268,132,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:53:10
+7042268,132,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:53:12
+7044494,155,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:53:22
+7032533,134,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:54:42
+7037246,135,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:55:11
+7037966,159,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:55:30
+7010087,161,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""GATEWAY EDUCATION"" (name=Client Name)",22-04-2026 11:56:27
+7050846,138,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:56:47
+7050726,162,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:57:00
+7052702,163,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:57:15
+7052702,163,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:57:17
+7004951,140,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:57:51
+7010229,164,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:57:45
+7051966,166,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:58:40
+7051966,166,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:58:42
+7051966,166,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:58:44
+7050127,142,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:58:39
+7050127,142,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:58:41
+7042564,167,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 11:59:00
+7042564,167,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 11:59:02
+7042564,167,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:59:04
+7005793,168,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 11:59:33
+7015717,146,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:00:53
+7004704,171,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:01:09
+7053549,149,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:03:00
+7042695,175,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:03:27
+7008848,176,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 12:03:45
+7008848,176,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 12:03:47
+7008848,176,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:03:49
+7049510,152,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""TC Business School"" (name=Client Name)",22-04-2026 12:04:35
+7042719,178,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 12:04:39
+7042719,178,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 12:04:41
+7042719,178,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:04:42
+7050109,153,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:05:05
+7041344,154,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:05:34
+7042804,180,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""Medhavi Skills University, Sikkim"" (name=Client Name)",22-04-2026 12:05:37
+7042817,235,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""MIT- World Peace University"" (name=Client Name)",22-04-2026 12:05:55
+7014867,274,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 12:06:11
+7014867,274,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 12:06:13
+7014867,274,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:06:14
+7042901,182,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 12:06:24
+7042901,182,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 12:06:26
+7042901,182,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:06:27
+7020933,183,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:06:56
+7050567,306,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""Om Dayal Group of Institutions"" (name=Client Name)",22-04-2026 12:07:09
+7049507,188,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 12:09:44
+7049507,188,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 12:09:46
+7049507,188,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:09:48
+7050444,191,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 12:11:16
+7050444,191,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 12:11:18
+7050444,191,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:11:20
+7039479,233,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""Unitedworld Institute of Design (UID)"" (name=Client Name)",22-04-2026 12:12:16
+7021698,256,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 12:12:38
+7021698,256,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:12:41
+7050733,257,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:13:10
+7007176,278,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:13:44
+7050124,284,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:14:14
+7042404,289,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""DYPIU, Pune"" (name=Client Name)",22-04-2026 12:14:38
+7042285,290,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:15:07
+7021468,298,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:15:37
+7054185,302,filter_not_found,Form Initiated,"Checkbox #u_form_initiated not visible for ""Form Initiated""",22-04-2026 12:15:52
+7054185,302,filter_not_found,Paid Apps,"Checkbox #u_payment_approved not visible for ""Paid Applications""",22-04-2026 12:15:54
+7054185,302,filter_not_found,Enrolment Status,"Checkbox #u_enrollment_status not visible for ""Enrolment Status""",22-04-2026 12:15:56
+7039522,303,filter_not_found,None,"client_not_in_dropdown: Filter[1/2] giving up (name=Client Name): NPF dropdown option not found for ""Universal Group of Institutions"" (name=Client Name)",22-04-2026 12:16:19

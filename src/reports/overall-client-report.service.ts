@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import axios from 'axios';
-import * as pg from 'pg';
 import * as ExcelJS from 'exceljs';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -19,39 +18,38 @@ export class OverallClientReportService {
 
   async generateAndSendReport() {
     this.logger.log('📊 Generating Overall Client Report for configured clients...');
+    const reportDate = this.getReportDateString();
+    const reportDateObj = this.getReportDateObject(reportDate);
     const reportNote =
-      'NOTE: This report is auto-generated. If you notice any incorrect data, please let us know so we can investigate and fix the issue at the source.';
+      'NOTE: This report is auto-generated. If you notice any incorrect data, please let us know so we can investigate and fix the issue at the source. LMS is being updated, upon which the null values in the report will also be updated with the correct fetched values.';
 
-    // 1. Fetch configured client IDs from local DB
-    const configRows = await this.dataSource.query(`SELECT DISTINCT client_id FROM client_wise_summary_config`);
-    const configuredIds = configRows.map(r => Number(r.client_id));
+    // 1. Fetch active client IDs from local DB (same base used by scraper runs)
+    const activeRows = await this.dataSource.query(`
+      SELECT DISTINCT ON (cw.client_id) cw.client_id
+      FROM client_wise cw
+      WHERE cw.is_active = true
+        AND cw.config_id IS NOT NULL
+      ORDER BY cw.client_id, cw.id DESC
+    `);
+    const configuredIds = activeRows.map(r => Number(r.client_id));
 
     if (configuredIds.length === 0) {
-      this.logger.warn('⚠️ No clients found in client_wise_summary_config. Report will be empty.');
-      return { success: true, message: 'No configured clients found.' };
+      this.logger.warn('⚠️ No active clients found in client_wise. Report will be empty.');
+      return { success: true, message: 'No active clients found.' };
     }
 
     // 2. Fetch client details from LMS only for those IDs
     const clients = await this.fetchClientsFromLms(configuredIds);
-    const bifurcationMap = await this.loadBifurcationByClientId();
-    const clientsWithCsvZone = clients.map((c) => {
-      const csv = bifurcationMap.get(Number(c.client_id));
-      const zoneFromCsv = csv?.['Account Zone'];
-      return {
+    const reportClients = clients
+      .map((c) => ({
         ...c,
-        // LMS base + CSV override (if CSV has value and differs/same, it's acceptable).
-        effective_account_zone: this.resolveFieldWithCsvOverride(c.account_zone, zoneFromCsv, ''),
-      };
-    });
-    const reportClients = clientsWithCsvZone.filter((c) =>
-      this.isCampaignStatusActive(
-        this.resolveCampaignStatusForReport(c, bifurcationMap.get(Number(c.client_id))),
-      ),
-    );
+        effective_account_zone: this.normalizeLmsValue(c.account_zone),
+      }))
+      .filter((c) => this.isCampaignStatusActive(this.resolveCampaignStatusForReport(c)));
     this.logger.log(
-      `📋 Report scope: ${reportClients.length} client(s) with Active campaign status (of ${clientsWithCsvZone.length} configured).`,
+      `📋 Report scope: ${reportClients.length} client(s) with Active campaign status (of ${clients.length} configured).`,
     );
-    const leads = await this.fetchLeadTotals();
+    const leads = await this.fetchLeadTotals(reportDate);
 
     // Group by account_zone - FILTER OUT empty/null zones for dedicated emails
     const zones = [...new Set(
@@ -67,15 +65,12 @@ export class OverallClientReportService {
       const zoneClients = reportClients.filter(c => (c.effective_account_zone || '').trim() === zone);
       if (zoneClients.length === 0) continue;
 
-      const { buffer, rowsData, columnsData } = await this.buildExcel(zoneClients, leads);
-
-      const today = new Date().toISOString().split('T')[0];
-      const zoneApps = zoneClients.reduce((acc, c) => acc + (leads[Number(c.client_id)]?.primary_application || 0), 0);
+      const { buffer, rowsData, columnsData } = await this.buildExcel(zoneClients, leads, reportDateObj);
 
       const emailHtml = buildEmailTemplate({
         title: `${zone} Zone - Client Report`,
         subtitle: 'Daily Performance Summary',
-        date: today,
+        date: reportDate,
         summaryCards: [
           { label: 'Zone Clients', value: zoneClients.length },
         ],
@@ -101,24 +96,22 @@ export class OverallClientReportService {
       await this.mailer.sendMail({
         to: toList,
         cc: ccList.length > 0 ? ccList : undefined,
-        subject: `📊 ${zone} Zone Client Report — ${today}`,
+        subject: `📊 ${zone} Zone Client Report — ${reportDate}`,
         html: emailHtml,
         attachments: [{
-          filename: `${zone}_Zone_Report_${today}.xlsx`,
+          filename: `${zone}_Zone_Report_${reportDate}.xlsx`,
           content: buffer,
         }],
       });
     }
 
     // Also send the original overall report as before
-    const { buffer: overallBuffer, rowsData: overallRows, columnsData: overallCols } = await this.buildExcel(reportClients, leads);
-    const today = new Date().toISOString().split('T')[0];
-    const globalApps = Object.values(leads).reduce((acc, curr) => acc + (curr.primary_application ?? 0), 0);
+    const { buffer: overallBuffer, rowsData: overallRows, columnsData: overallCols } = await this.buildExcel(reportClients, leads, reportDateObj);
 
     const overallEmailHtml = buildEmailTemplate({
       title: 'Overall Client Report',
       subtitle: 'Daily Performance Summary',
-      date: today,
+      date: reportDate,
       summaryCards: [
         { label: 'Total Clients', value: reportClients.length },
       ],
@@ -141,10 +134,10 @@ export class OverallClientReportService {
     await this.mailer.sendMail({
       to: overallToList,
       cc: overallCcList.length > 0 ? overallCcList : undefined,
-      subject: `📊 Overall Client Report — ${today}`,
+      subject: `📊 Overall Client Report — ${reportDate}`,
       html: overallEmailHtml,
       attachments: [{
-        filename: `Overall_Client_Report_${today}.xlsx`,
+        filename: `Overall_Client_Report_${reportDate}.xlsx`,
         content: overallBuffer,
       }],
     });
@@ -183,26 +176,29 @@ export class OverallClientReportService {
     }
   }
 
-  private async fetchLeadTotals(): Promise<Record<number, any>> {
+  private async fetchLeadTotals(reportDate: string): Promise<Record<number, any>> {
     const rows: any[] = await this.dataSource.query(`
       WITH daily_latest AS (
         SELECT 
           client_id, filter_applied, funnel_source, primary_leads, verified_leads, secondary_leads, tertiary_leads,
-          ROW_NUMBER() OVER(PARTITION BY client_id, filter_applied, funnel_source, created_at::date ORDER BY created_at DESC) as intra_day_rn,
-          created_at::date as scrape_date
+          ROW_NUMBER() OVER(
+            PARTITION BY client_id, filter_applied, funnel_source, (created_at AT TIME ZONE 'Asia/Kolkata')::date
+            ORDER BY created_at DESC
+          ) as intra_day_rn,
+          (created_at AT TIME ZONE 'Asia/Kolkata')::date as scrape_date
         FROM npf_funnel_summary
       ),
       today_latest AS (
         SELECT *
         FROM daily_latest
         WHERE intra_day_rn = 1
-          AND scrape_date = CURRENT_DATE
+          AND scrape_date = $1::date
       ),
       yesterday_latest AS (
         SELECT *
         FROM daily_latest
         WHERE intra_day_rn = 1
-          AND scrape_date = CURRENT_DATE - INTERVAL '1 day'
+          AND scrape_date = ($1::date - INTERVAL '1 day')
       ),
       ranked_filters AS (
         SELECT *,
@@ -212,25 +208,30 @@ export class OverallClientReportService {
       ),
       m0_start AS (
         SELECT DISTINCT ON (client_id, filter_applied, funnel_source) client_id, filter_applied, funnel_source, primary_leads
-        FROM npf_funnel_summary WHERE created_at >= DATE_TRUNC('month', CURRENT_DATE) ORDER BY client_id, filter_applied, funnel_source, created_at ASC
+        FROM npf_funnel_summary
+        WHERE (created_at AT TIME ZONE 'Asia/Kolkata')::date >= DATE_TRUNC('month', $1::date)::date
+        ORDER BY client_id, filter_applied, funnel_source, created_at ASC
       ),
       m1_start AS (
         SELECT DISTINCT ON (client_id, filter_applied, funnel_source) client_id, filter_applied, funnel_source, primary_leads
-        FROM npf_funnel_summary WHERE created_at >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') AND created_at < DATE_TRUNC('month', CURRENT_DATE) ORDER BY client_id, filter_applied, funnel_source, created_at ASC
+        FROM npf_funnel_summary
+        WHERE (created_at AT TIME ZONE 'Asia/Kolkata')::date >= DATE_TRUNC('month', $1::date - INTERVAL '1 month')::date
+          AND (created_at AT TIME ZONE 'Asia/Kolkata')::date < DATE_TRUNC('month', $1::date)::date
+        ORDER BY client_id, filter_applied, funnel_source, created_at ASC
       )
       SELECT 
         c.client_id,
         NULLIF(REGEXP_REPLACE(trp.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric AS primary_application,
-        CASE WHEN trp.primary_leads IS NULL THEN NULL ELSE GREATEST(0, COALESCE(NULLIF(REGEXP_REPLACE(trp.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0) - COALESCE(NULLIF(REGEXP_REPLACE(yrp.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0)) END AS yesterday_application,
-        CASE WHEN trn.primary_leads IS NULL THEN NULL ELSE GREATEST(0, COALESCE(NULLIF(REGEXP_REPLACE(trn.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0) - COALESCE(NULLIF(REGEXP_REPLACE(yrn.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0)) END AS yesterday_primary_leads,
+        CASE WHEN trp.primary_leads IS NULL OR yrp.primary_leads IS NULL THEN NULL ELSE GREATEST(0, COALESCE(NULLIF(REGEXP_REPLACE(trp.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0) - COALESCE(NULLIF(REGEXP_REPLACE(yrp.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0)) END AS yesterday_application,
+        CASE WHEN trn.primary_leads IS NULL OR yrn.primary_leads IS NULL THEN NULL ELSE GREATEST(0, COALESCE(NULLIF(REGEXP_REPLACE(trn.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0) - COALESCE(NULLIF(REGEXP_REPLACE(yrn.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0)) END AS yesterday_primary_leads,
         NULLIF(REGEXP_REPLACE(trn.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric AS total_primary_leads,
         NULLIF(REGEXP_REPLACE(trn.verified_leads, '[^0-9.-]', '', 'g'), '')::numeric AS prim_verified_leads,
         NULLIF(REGEXP_REPLACE(trfi.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric AS primary_form_initiated,
         NULLIF(REGEXP_REPLACE(tren.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric AS primary_admission,
-        CASE WHEN tren.primary_leads IS NULL THEN NULL ELSE GREATEST(0, COALESCE(NULLIF(REGEXP_REPLACE(tren.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0) - COALESCE(NULLIF(REGEXP_REPLACE(yren.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0)) END AS yesterday_admission,
+        CASE WHEN tren.primary_leads IS NULL OR yren.primary_leads IS NULL THEN NULL ELSE GREATEST(0, COALESCE(NULLIF(REGEXP_REPLACE(tren.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0) - COALESCE(NULLIF(REGEXP_REPLACE(yren.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0)) END AS yesterday_admission,
         -- Month-1 Achievement (Start of M0 - Start of M1) e.g. (Apr 1st - Mar 1st)
-        CASE WHEN ms0.primary_leads IS NULL THEN NULL ELSE GREATEST(0, COALESCE(NULLIF(REGEXP_REPLACE(ms0.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0) - COALESCE(NULLIF(REGEXP_REPLACE(ms1.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0)) END AS month_1_adm_achieved,
-        CASE WHEN aps0.primary_leads IS NULL THEN NULL ELSE GREATEST(0, COALESCE(NULLIF(REGEXP_REPLACE(aps0.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0) - COALESCE(NULLIF(REGEXP_REPLACE(aps1.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0)) END AS month_1_app_achieved,
+        CASE WHEN ms0.primary_leads IS NULL OR ms1.primary_leads IS NULL THEN NULL ELSE GREATEST(0, COALESCE(NULLIF(REGEXP_REPLACE(ms0.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0) - COALESCE(NULLIF(REGEXP_REPLACE(ms1.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0)) END AS month_1_adm_achieved,
+        CASE WHEN aps0.primary_leads IS NULL OR aps1.primary_leads IS NULL THEN NULL ELSE GREATEST(0, COALESCE(NULLIF(REGEXP_REPLACE(aps0.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0) - COALESCE(NULLIF(REGEXP_REPLACE(aps1.primary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0)) END AS month_1_app_achieved,
         CASE WHEN trn.secondary_leads IS NULL OR trn.tertiary_leads IS NULL THEN NULL ELSE (COALESCE(NULLIF(REGEXP_REPLACE(trn.secondary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0) + COALESCE(NULLIF(REGEXP_REPLACE(trn.tertiary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0)) END AS duplicate_lead,
         CASE WHEN trp.secondary_leads IS NULL OR trp.tertiary_leads IS NULL THEN NULL ELSE (COALESCE(NULLIF(REGEXP_REPLACE(trp.secondary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0) + COALESCE(NULLIF(REGEXP_REPLACE(trp.tertiary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0)) END AS duplicate_application,
         CASE WHEN tren.secondary_leads IS NULL OR tren.tertiary_leads IS NULL THEN NULL ELSE (COALESCE(NULLIF(REGEXP_REPLACE(tren.secondary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0) + COALESCE(NULLIF(REGEXP_REPLACE(tren.tertiary_leads, '[^0-9.-]', '', 'g'), '')::numeric, 0)) END AS duplicate_admission
@@ -246,7 +247,7 @@ export class OverallClientReportService {
       LEFT JOIN m1_start ms1 ON ms1.client_id = c.client_id AND ms1.funnel_source = 'lead_view' AND ms1.filter_applied = 'Enrolment Status'
       LEFT JOIN m0_start aps0 ON aps0.client_id = c.client_id AND aps0.funnel_source = 'lead_view' AND aps0.filter_applied = 'Paid Apps'
       LEFT JOIN m1_start aps1 ON aps1.client_id = c.client_id AND aps1.funnel_source = 'lead_view' AND aps1.filter_applied = 'Paid Apps'
-    `);
+    `, [reportDate]);
     const map: Record<number, any> = {};
     rows.forEach((r) => {
       map[Number(r.client_id)] = {
@@ -268,11 +269,11 @@ export class OverallClientReportService {
     return map;
   }
 
-  private async buildExcel(clients: any[], leads: Record<number, any>): Promise<{ buffer: Buffer; rowsData: any[]; columnsData: any[] }> {
+  private async buildExcel(clients: any[], leads: Record<number, any>, reportDate: Date): Promise<{ buffer: Buffer; rowsData: any[]; columnsData: any[] }> {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Overall Client Report');
 
-    const now = new Date();
+    const now = reportDate;
     // Month-1 (e.g. March)
     const m1Date = new Date();
     m1Date.setDate(1);
@@ -323,7 +324,6 @@ export class OverallClientReportService {
     // LOAD HISTORICAL M1 DATA FROM CSV (Specifically for March data)
     // ---------------------------------------------------------------------
     const manualHistoricalData: Record<string, { app: number; adm: number }> = {};
-    const bifurcationMap = await this.loadBifurcationByClientId();
 
     // Only inject manual March data when the report is generating in April (month index 3)
     // Once May starts, the DB will natively have full snapshots for April!
@@ -357,21 +357,9 @@ export class OverallClientReportService {
 
     clients.forEach((c, idx) => {
       const m = leads[Number(c.client_id)] || {};
-      const csv = bifurcationMap.get(Number(c.client_id));
       let days = 0;
-      const csvOnboarding = csv?.['On-Boarding Date'];
-      const lmsOnboarding = c.on_boarding_date;
-      const norm = (v: unknown) => String(v ?? '').trim().toLowerCase();
-      const hasLmsOnboarding = this.hasValue(lmsOnboarding);
-      const hasCsvOnboarding = this.hasValue(csvOnboarding);
-
-      // Rule: use CSV onboarding date when LMS date is missing OR mismatched.
-      const chosenOnboarding = hasCsvOnboarding && (!hasLmsOnboarding || norm(csvOnboarding) !== norm(lmsOnboarding))
-        ? csvOnboarding
-        : lmsOnboarding;
-
-      if (this.hasValue(chosenOnboarding)) {
-        const onboard = new Date(String(chosenOnboarding));
+      if (this.hasValue(c.on_boarding_date)) {
+        const onboard = new Date(String(c.on_boarding_date));
         if (!Number.isNaN(onboard.getTime())) {
           days = Math.ceil((now.getTime() - onboard.getTime()) / (1000 * 60 * 60 * 24));
         }
@@ -385,17 +373,16 @@ export class OverallClientReportService {
         sno: idx + 1,
         no_of_days: days > 0 ? days : '',
         // Always from LMS (per business rule)
-        client_name: c.client_name,
-        // LMS base + CSV override
-        campaign_status: this.resolveFieldWithCsvOverride(c.campaign_status ?? c.status, csv?.['Campaign Status'], 'INACTIVE'),
-        deal_type: this.resolveFieldWithCsvOverride(c.deal_type, csv?.['Deal Type'], 'N/A'),
-        crm: this.resolveFieldWithCsvOverride(c.crm, csv?.['CRM'], 'N/A'),
-        target_lead: this.resolveFieldWithCsvOverride(c.target_lead, csv?.['Target Lead'], ''),
-        target_application: this.resolveFieldWithCsvOverride(c.target_application, csv?.['Target Application'], ''),
-        target_admission: this.resolveFieldWithCsvOverride(c.target_admission, csv?.['Target Admission'], ''),
-        sales_tl: this.resolveFieldWithCsvOverride(c.sales_tl, csv?.['Sales TL'], '—'),
-        ops_tl: this.resolveFieldWithCsvOverride(c.ops_tl, csv?.['Ops TL'], '—'),
-        state: this.resolveFieldWithCsvOverride(c.client_state, csv?.['State'], 'N/A'),
+        client_name: this.normalizeLmsValue(c.client_name),
+        campaign_status: this.normalizeLmsValue(c.campaign_status ?? c.status),
+        deal_type: this.normalizeLmsValue(c.deal_type),
+        crm: this.normalizeLmsValue(c.crm),
+        target_lead: this.normalizeLmsValue(c.target_lead),
+        target_application: this.normalizeLmsValue(c.target_application),
+        target_admission: this.normalizeLmsValue(c.target_admission),
+        sales_tl: this.normalizeLmsValue(c.sales_tl),
+        ops_tl: this.normalizeLmsValue(c.ops_tl),
+        state: this.normalizeLmsValue(c.client_state),
         yesterday_primary_leads: m.yesterday_primary_leads ?? '',
         primary_form_initiated: m.primary_form_initiated ?? '',
         prim_verified_leads: m.prim_verified_leads ?? '',
@@ -419,33 +406,19 @@ export class OverallClientReportService {
     return { buffer, rowsData, columnsData };
   }
 
-  /** LMS `campaign_status` (or legacy `status`) with optional Bifurcation CSV override. */
   private resolveCampaignStatusForReport(
     client: Record<string, unknown>,
-    csvRow: Record<string, string> | undefined,
   ): string {
-    return String(
-      this.resolveFieldWithCsvOverride(
-        client['campaign_status'] ?? client['status'],
-        csvRow?.['Campaign Status'],
-        'INACTIVE',
-      ),
-    ).trim();
+    return this.normalizeLmsValue(client['campaign_status'] ?? client['status']);
   }
 
   private isCampaignStatusActive(status: string): boolean {
     return status.toUpperCase() === 'ACTIVE';
   }
 
-  private resolveFieldWithCsvOverride(
-    lmsValue: unknown,
-    csvValue: unknown,
-    fallback: string,
-  ): string | number {
-    // Rule: start with LMS, then apply CSV override if provided.
-    if (this.hasValue(csvValue)) return csvValue as string | number;
-    if (this.hasValue(lmsValue)) return lmsValue as string | number;
-    return fallback;
+  private normalizeLmsValue(v: unknown): string {
+    if (!this.hasValue(v)) return '';
+    return String(v).trim();
   }
 
   private hasValue(v: unknown): boolean {
@@ -456,45 +429,32 @@ export class OverallClientReportService {
     return lower !== 'null' && lower !== 'undefined' && lower !== 'na' && lower !== 'n/a' && lower !== '-';
   }
 
-  private async loadBifurcationByClientId(): Promise<Map<number, Record<string, string>>> {
-    const out = new Map<number, Record<string, string>>();
-    const csvPath = path.join(process.cwd(), 'data', 'Bifurcation.csv');
-    if (!fs.existsSync(csvPath)) {
-      this.logger.warn('Bifurcation.csv not found; using LMS-only values for report fields.');
-      return out;
+  private getReportDateString(): string {
+    const override = (process.env.REPORT_AS_OF_DATE || '').trim();
+    if (override) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(override)) {
+        this.logger.log(`📅 Using REPORT_AS_OF_DATE override: ${override}`);
+        return override;
+      }
+      this.logger.warn(
+        `⚠️ Invalid REPORT_AS_OF_DATE="${override}". Expected YYYY-MM-DD. Falling back to current IST date.`,
+      );
     }
 
-    try {
-      const workbook = new ExcelJS.Workbook();
-      const worksheet = await workbook.csv.readFile(csvPath);
-      const headerValues = worksheet.getRow(1).values as Array<string | number | null | undefined>;
-      const headers = headerValues
-        .slice(1)
-        .map((h) => String(h ?? '').trim());
-      if (!headers.length) return out;
-      const idIdx = headers.findIndex((h) => h.trim().toLowerCase() === 'kollegeapply id');
-      if (idIdx === -1) {
-        this.logger.warn('Bifurcation.csv missing "Kollegeapply ID" header; skipping CSV overrides.');
-        return out;
-      }
-      worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return;
-        const values = (row.values as Array<string | number | null | undefined>).slice(1);
-        const rawId = String(values[idIdx] ?? '').trim();
-        const clientId = Number(rawId);
-        if (!Number.isFinite(clientId) || clientId <= 0) return;
-        const parsedRow: Record<string, string> = {};
-        for (let c = 0; c < headers.length; c++) {
-          parsedRow[headers[c]] = String(values[c] ?? '').trim();
-        }
-        out.set(clientId, parsedRow);
-      });
-      this.logger.log(`Loaded Bifurcation.csv overrides for ${out.size} clients.`);
-    } catch (e) {
-      this.logger.error(`Failed to parse Bifurcation.csv: ${(e as Error).message}`);
-    }
-    return out;
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return formatter.format(new Date());
   }
+
+  private getReportDateObject(reportDate: string): Date {
+    const [year, month, day] = reportDate.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+
 }
 
 

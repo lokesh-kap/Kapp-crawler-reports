@@ -7,7 +7,11 @@ import { AdsCredential } from './entities/ads-credential.entity';
 import { AdsAccount } from './entities/ads-account.entity';
 import { CampaignInfo } from './entities/campaign-info.entity';
 import { CampaignMetrics } from './entities/campaign-metrics.entity';
-import { GoogleAdsService, GoogleAdsConfig } from './providers/google/google-ads.service';
+import {
+  GoogleAdsService,
+  GoogleAdsConfig,
+  isGoogleCustomerAccessLostError,
+} from './providers/google/google-ads.service';
 import { MetaAdsService } from './providers/meta/meta-ads.service';
 import { AdsProvider, AccountStatus, CampaignStatus, CampaignType, BiddingStrategy } from './enums';
 
@@ -52,6 +56,36 @@ const META_STATUS_MAP: Record<string, CampaignStatus> = {
   'ARCHIVED': CampaignStatus.REMOVED,
   'DELETED': CampaignStatus.REMOVED,
 };
+
+const toCampaignStartDate = (v: unknown): string | null => {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+};
+
+/** Google `customer.status` / `customer_client.status` → our AccountStatus */
+const GOOGLE_ACCOUNT_STATUS_MAP: Record<any, AccountStatus> = {
+  0: AccountStatus.UNKNOWN,
+  1: AccountStatus.UNKNOWN,
+  2: AccountStatus.ENABLED,
+  3: AccountStatus.DEACTIVATED,
+  4: AccountStatus.PAUSED,
+  5: AccountStatus.DEACTIVATED,
+  UNKNOWN: AccountStatus.UNKNOWN,
+  UNSPECIFIED: AccountStatus.UNKNOWN,
+  ENABLED: AccountStatus.ENABLED,
+  CANCELED: AccountStatus.DEACTIVATED,
+  CANCELLED: AccountStatus.DEACTIVATED,
+  CLOSED: AccountStatus.DEACTIVATED,
+  SUSPENDED: AccountStatus.PAUSED,
+};
+
+function mapGoogleAccountStatus(raw: string | number | undefined | null): AccountStatus {
+  if (raw === undefined || raw === null) return AccountStatus.UNKNOWN;
+  return GOOGLE_ACCOUNT_STATUS_MAP[raw] ?? AccountStatus.UNKNOWN;
+}
 
 @Injectable()
 export class AdsEngineService {
@@ -141,6 +175,8 @@ export class AdsEngineService {
               isManager: false,
               parentId: mcc.id,
               credentialId: cred.id,
+              status: mapGoogleAccountStatus(c.status),
+              providerRawStatus: c.status != null ? String(c.status) : null,
               lastSyncedAt: new Date(),
             }, ['externalCustomerId']);
           }
@@ -166,13 +202,26 @@ export class AdsEngineService {
     if (!mccId) return;
 
     try {
-      // Sync Info
+      const rawCustomerStatus = await this.googleAdsService.getCustomerAccountStatus(
+        client.externalCustomerId,
+        mccId,
+        config,
+      );
+      const accountStatus = mapGoogleAccountStatus(rawCustomerStatus);
+
       const infoRows = await this.googleAdsService.getCampaignInfo(client.externalCustomerId, mccId, config);
       const campaignInfoRows: DeepPartial<CampaignInfo>[] = infoRows.map(r => ({
         externalCampaignId: r.campaign.id.toString(),
         name: r.campaign.name,
         provider: AdsProvider.GOOGLE,
+        campaignStartDate: toCampaignStartDate(
+          r.campaign.start_date_time ??
+            r.campaign.startDateTime ??
+            r.campaign.start_date ??
+            r.campaign.startDate,
+        ),
         status: GOOGLE_STATUS_MAP[r.campaign.status] || CampaignStatus.UNKNOWN,
+        providerRawStatus: r.campaign.status != null ? String(r.campaign.status) : null,
         campaignType: GOOGLE_TYPE_MAP[r.campaign.advertising_channel_type] || CampaignType.UNKNOWN,
         biddingStrategy: GOOGLE_BIDDING_MAP[r.campaign.bidding_strategy_type] || BiddingStrategy.UNKNOWN,
         optimizationScore: r.campaign.optimization_score || 0,
@@ -182,7 +231,12 @@ export class AdsEngineService {
       }));
       await this.infoRepo.upsert(campaignInfoRows, ['externalCampaignId']);
 
-      // Sync Metrics
+      await this.accountRepo.update(client.id, {
+        status: accountStatus,
+        providerRawStatus: rawCustomerStatus != null ? String(rawCustomerStatus) : null,
+        lastSyncedAt: new Date(),
+      });
+
       let startDate = 'YESTERDAY';
       let endDate = 'YESTERDAY';
       if (fullHistory) {
@@ -192,31 +246,59 @@ export class AdsEngineService {
          endDate = yesterday.toISOString().split('T')[0];
       }
 
-      const metricRowsRaw = await this.googleAdsService.getCampaigns(client.externalCustomerId, mccId, config, startDate, endDate);
-      const infos = await this.infoRepo.find({ where: { adsAccountId: client.id } });
-      const idMap = new Map(infos.map(i => [i.externalCampaignId, i.id]));
+      try {
+        const metricRowsRaw = await this.googleAdsService.getCampaigns(client.externalCustomerId, mccId, config, startDate, endDate);
+        const infos = await this.infoRepo.find({ where: { adsAccountId: client.id } });
+        const idMap = new Map(infos.map(i => [i.externalCampaignId, i.id]));
 
-      const metricRows = metricRowsRaw.map(r => {
-        const infoId = idMap.get(r.campaign.id.toString());
-        if (!infoId) return null;
-        return {
-          campaignInfoId: infoId,
-          date: r.segments.date,
-          impressions: r.metrics.impressions,
-          clicks: r.metrics.clicks,
-          ctr: r.metrics.ctr,
-          avgCpc: r.metrics.average_cpc / 1000000,
-          spend: r.metrics.cost_micros / 1000000,
-          searchImpressionShare: r.metrics.search_impression_share,
-          updatedAt: new Date(),
-        };
-      }).filter(m => m !== null) as any[];
+        const metricRows = metricRowsRaw.map(r => {
+          const infoId = idMap.get(r.campaign.id.toString());
+          if (!infoId) return null;
+          const averageCpcMicros = Number(r.metrics.average_cpc ?? 0);
+          const costMicros = Number(r.metrics.cost_micros ?? 0);
+          const ctr = Number(r.metrics.ctr ?? 0);
+          const searchImpressionShare = Number(r.metrics.search_impression_share ?? 0);
+          const impressions = Number(r.metrics.impressions ?? 0);
+          const clicks = Number(r.metrics.clicks ?? 0);
+          const spend = Number.isFinite(costMicros) ? costMicros / 1000000 : 0;
+          const hasActivity = impressions > 0 || clicks > 0 || spend > 0;
+          if (!hasActivity) return null;
+          return {
+            campaignInfoId: infoId,
+            date: r.segments.date,
+            impressions,
+            clicks,
+            ctr: Number.isFinite(ctr) ? ctr : 0,
+            avgCpc: Number.isFinite(averageCpcMicros) ? averageCpcMicros / 1000000 : 0,
+            spend,
+            searchImpressionShare: Number.isFinite(searchImpressionShare) ? searchImpressionShare : 0,
+            updatedAt: new Date(),
+          };
+        }).filter(m => m !== null) as any[];
 
-      const CHUNK_SIZE = 500;
-      for (let i = 0; i < metricRows.length; i += CHUNK_SIZE) {
-        await this.metricsRepo.upsert(metricRows.slice(i, i + CHUNK_SIZE), ['campaignInfoId', 'date']);
+        const CHUNK_SIZE = 500;
+        for (let i = 0; i < metricRows.length; i += CHUNK_SIZE) {
+          await this.metricsRepo.upsert(metricRows.slice(i, i + CHUNK_SIZE), ['campaignInfoId', 'date']);
+        }
+      } catch (metricErr: any) {
+        this.logger.warn(
+          `Metrics sync failed for client ${client.externalCustomerId} (campaign info saved): ${metricErr.message}`,
+        );
       }
     } catch (err: any) {
+      if (isGoogleCustomerAccessLostError(err)) {
+        await this.accountRepo.update(client.id, {
+          status: AccountStatus.DEACTIVATED,
+          lastSyncedAt: new Date(),
+        });
+        await this.infoRepo.update(
+          { adsAccountId: client.id, provider: AdsProvider.GOOGLE },
+          { status: CampaignStatus.UNKNOWN, lastSyncedAt: new Date() },
+        );
+        this.logger.warn(
+          `Marked Google account ${client.externalCustomerId} DEACTIVATED and campaigns UNKNOWN (access lost)`,
+        );
+      }
       this.logger.error(`Error syncing campaigns for client ${client.externalCustomerId}: ${err.message}`);
     }
   }
@@ -259,6 +341,7 @@ export class AdsEngineService {
         name: c.name,
         provider: AdsProvider.META,
         status: META_STATUS_MAP[c.status] || CampaignStatus.UNKNOWN,
+        providerRawStatus: c.status != null ? String(c.status) : null,
         campaignType: CampaignType.DISPLAY, // Default for Meta
         dailyBudget: c.daily_budget ? Number(c.daily_budget) / 100 : 0,
         adsAccountId: acc.id,

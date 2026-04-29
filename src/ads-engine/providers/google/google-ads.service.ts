@@ -44,12 +44,31 @@ const CAMPAIGN_INFO_ONLY_QUERY = `
   SELECT
     campaign.id,
     campaign.name,
+    campaign.start_date_time,
     campaign.status,
     campaign.bidding_strategy_type,
     campaign.advertising_channel_type,
     campaign.optimization_score,
     campaign_budget.amount_micros
   FROM campaign
+`;
+
+const CAMPAIGN_INFO_ONLY_QUERY_FALLBACK = `
+  SELECT
+    campaign.id,
+    campaign.name,
+    campaign.status,
+    campaign.bidding_strategy_type,
+    campaign.advertising_channel_type,
+    campaign.optimization_score,
+    campaign_budget.amount_micros
+  FROM campaign
+`;
+
+const CUSTOMER_STATUS_QUERY = `
+  SELECT customer.status
+  FROM customer
+  LIMIT 1
 `;
 
 const RETRYABLE_ERRORS = [
@@ -183,9 +202,100 @@ export class GoogleAdsService {
     loginCustomerId: string,
     config: GoogleAdsConfig
   ): Promise<any[]> {
-    return this.withRetry(
-      () => this.query(customerCustomerId, CAMPAIGN_INFO_ONLY_QUERY, loginCustomerId, config),
-      `getCampaignInfo (Status Sync) for ${customerCustomerId}`,
-    );
+    try {
+      return await this.withRetry(
+        () => this.query(customerCustomerId, CAMPAIGN_INFO_ONLY_QUERY, loginCustomerId, config),
+        `getCampaignInfo (Status Sync) for ${customerCustomerId}`,
+      );
+    } catch (err: any) {
+      const msg = String(err?.message ?? '');
+      if (
+        msg.includes('UNRECOGNIZED_FIELD') &&
+        (msg.includes('campaign.start_date') || msg.includes('campaign.start_date_time'))
+      ) {
+        this.logger.warn(
+          `campaign start-date field not supported for customer ${customerCustomerId}; using fallback campaign info query without start date.`,
+        );
+        return this.withRetry(
+          () =>
+            this.query(
+              customerCustomerId,
+              CAMPAIGN_INFO_ONLY_QUERY_FALLBACK,
+              loginCustomerId,
+              config,
+            ),
+          `getCampaignInfo fallback (without start-date field) for ${customerCustomerId}`,
+        );
+      }
+      throw err;
+    }
   }
+
+  /**
+   * Account-level status for the client customer (ENABLED, CANCELED, SUSPENDED, etc.).
+   * Returned value may be an enum name string or a numeric code depending on API serialization.
+   */
+  async getCustomerAccountStatus(
+    customerCustomerId: string,
+    loginCustomerId: string,
+    config: GoogleAdsConfig,
+  ): Promise<string | number | undefined> {
+    const rows = await this.withRetry(
+      () =>
+        this.query(
+          customerCustomerId,
+          CUSTOMER_STATUS_QUERY,
+          loginCustomerId,
+          config,
+        ),
+      `getCustomerAccountStatus for ${customerCustomerId}`,
+    );
+    return rows[0]?.customer?.status;
+  }
+}
+
+/** True when the API indicates the customer cannot be queried (deactivated, not enabled, etc.). */
+export function isGoogleCustomerAccessLostError(err: unknown): boolean {
+  const e = err as any;
+  const parts: string[] = [];
+  if (e?.message) parts.push(String(e.message));
+  if (Array.isArray(e?.errors)) {
+    for (const item of e.errors) {
+      if (item?.message) parts.push(String(item.message));
+    }
+  }
+  if (e?.failure?.errors?.length) {
+    for (const item of e.failure.errors) {
+      if (item?.message) parts.push(String(item.message));
+    }
+  }
+  const blob = parts.join(' ').toLowerCase();
+  const json = JSON.stringify(e ?? {}).toLowerCase();
+
+  if (
+    blob.includes('not yet enabled') &&
+    (blob.includes('deactivated') || blob.includes('disabled'))
+  ) {
+    return true;
+  }
+  if (blob.includes("can't be accessed") || blob.includes('cannot be accessed')) {
+    if (
+      blob.includes('deactivated') ||
+      blob.includes('cancelled') ||
+      blob.includes('canceled') ||
+      blob.includes('closed') ||
+      blob.includes('not yet enabled')
+    ) {
+      return true;
+    }
+  }
+  if (
+    json.includes('customer_not_enabled') ||
+    json.includes('customer_not_active') ||
+    json.includes('not_serving_customer') ||
+    json.includes('no_access_to_customer')
+  ) {
+    return true;
+  }
+  return false;
 }
