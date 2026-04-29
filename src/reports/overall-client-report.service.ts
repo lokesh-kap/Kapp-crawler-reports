@@ -354,8 +354,13 @@ export class OverallClientReportService {
     }
 
     const rowsData: any[] = [];
+    const sortedClients = [...clients].sort((a, b) => {
+      const aPrimaryApplication = Number(leads[Number(a.client_id)]?.primary_application ?? 0);
+      const bPrimaryApplication = Number(leads[Number(b.client_id)]?.primary_application ?? 0);
+      return bPrimaryApplication - aPrimaryApplication;
+    });
 
-    clients.forEach((c, idx) => {
+    sortedClients.forEach((c, idx) => {
       const m = leads[Number(c.client_id)] || {};
       let days = 0;
       if (this.hasValue(c.on_boarding_date)) {
