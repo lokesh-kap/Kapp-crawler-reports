@@ -30,13 +30,13 @@ export class CronService {
     }
   }
 
-  @Cron('05 12 * * *', { timeZone: 'Asia/Kolkata' })
+  @Cron('05 00 * * *', { timeZone: 'Asia/Kolkata' })
   async adsAndNpfSync() {
     await this.callApi('/ads-engine/sync', 'Ads Sync');
     await this.callApi('/scraper/schedule/npf-funnel/run', 'NPF Funnel + Campaign Scrape');
   }
 
-  @Cron('23 17 * * *', { timeZone: 'Asia/Kolkata' })
+  @Cron('00 09 * * *', { timeZone: 'Asia/Kolkata' })
   async reportEmailSchedule() {
     if (!(`${process.env.REPORT_CRON_ENABLED}` === 'true')) return;
     const reportCalls = [
