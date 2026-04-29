@@ -269,9 +269,7 @@ export class ScrapeSchedulerService {
     this.npfRunning = true;
     this.logger.log('Manual trigger: NPF Funnel retry from latest warning CSV');
     try {
-      // Retry flow is intentionally disabled for now.
-      // await this.runNpfFunnelWarningRetry();
-      this.logger.warn('NPF retry is currently disabled (manual trigger skipped).');
+      await this.runNpfFunnelWarningRetry();
     } finally {
       this.npfRunning = false;
     }
@@ -326,6 +324,7 @@ export class ScrapeSchedulerService {
       'metrics_not_found',
       'dom_fallback_incomplete',
       'hard_error',
+      'campaign_error',
       'warning_retry_failed',
       'warning_retry_second_failed',
     ]);
@@ -447,6 +446,11 @@ export class ScrapeSchedulerService {
                   { page, skipLogin: !isFirstInGroup },
                 );
                 isFirstInGroup = false;
+                // Retry campaign summary API as part of warning-retry flow as well.
+                await this.scrapperService.scrapeNpfCampaignDetailsViaApi(
+                  { client_wise_id: row.id } as any,
+                  { page, skipLogin: true },
+                );
                 retrySuccessList.push(row.client_id);
                 progress.processed += 1;
                 progress.success += 1;
@@ -498,16 +502,7 @@ export class ScrapeSchedulerService {
     }
     this.logger.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
     
-    this.logger.log(`NPF Funnel standalone retry finished. Now triggering report...`);
-    try {
-      await this.reportService.generateAndSendReport();
-      this.logger.log(`NPF Funnel standalone retry report sent successfully`);
-    } catch (err) {
-      this.logger.error(
-        `NPF Funnel standalone retry report generation failed`,
-        err instanceof Error ? err.stack : undefined,
-      );
-    }
+    this.logger.log(`NPF Funnel standalone retry finished.`);
   }
 
   private async getActiveRows(): Promise<ClientWiseEntity[]> {
@@ -653,9 +648,33 @@ export class ScrapeSchedulerService {
         let browserContext;
         try {
           browserContext = await this.playwrightService.createBrowser({ useProxy: false });
-          const { page } = browserContext;
+          let page = browserContext.page;
           let isFirstInGroup = true;
           const leadCompletedRows: ClientWiseEntity[] = [];
+
+          const closeBrowserContext = async () => {
+            if (!browserContext) return;
+            await browserContext.page?.close().catch(() => null);
+            await browserContext.context?.close().catch(() => null);
+            await browserContext.browser?.close().catch(() => null);
+          };
+
+          const ensureLivePage = async (clientId: number): Promise<boolean> => {
+            const closed =
+              !page ||
+              page.isClosed?.() === true ||
+              browserContext?.browser?.isConnected?.() === false;
+            if (!closed) return false;
+
+            this.logger.warn(
+              `Detected closed browser page/context for client_id=${clientId}; recreating browser session and forcing fresh login.`,
+            );
+            await closeBrowserContext();
+            browserContext = await this.playwrightService.createBrowser({ useProxy: false });
+            page = browserContext.page;
+            isFirstInGroup = true;
+            return true;
+          };
 
           for (const row of group) {
             const summaryConfig = await this.summaryConfigRepository.findOne({
@@ -675,6 +694,10 @@ export class ScrapeSchedulerService {
 
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
               try {
+                const recreated = await ensureLivePage(row.client_id);
+                if (recreated) {
+                  forceLoginForRetry = true;
+                }
                 const skipLogin = !isFirstInGroup && !forceLoginForRetry;
                 this.logger.log(`\n=> Scraping NPF Funnel for client_wise_id=${row.id} client_id=${row.client_id} (Attempt ${attempt}/${maxRetries}, Skipping Login: ${skipLogin})`);
 
@@ -698,6 +721,10 @@ export class ScrapeSchedulerService {
                 break; // If successful, immediately break out of the retry loop
               } catch (err) {
                 lastError = err instanceof Error ? err.message : String(err);
+                if (/target page, context or browser has been closed/i.test(lastError)) {
+                  forceLoginForRetry = true;
+                  await ensureLivePage(row.client_id);
+                }
                 if (isLikelySessionLogoutError(lastError)) {
                   forceLoginForRetry = true;
                   this.logger.warn(
@@ -738,6 +765,10 @@ export class ScrapeSchedulerService {
 
             for (let attempt = 1; attempt <= maxCampaignRetries; attempt += 1) {
               try {
+                const recreated = await ensureLivePage(row.client_id);
+                if (recreated) {
+                  forceCampaignLoginForRetry = true;
+                }
                 const skipLogin = !forceCampaignLoginForRetry;
                 this.logger.log(
                   `=> Campaign scrape client_wise_id=${row.id} client_id=${row.client_id} (Attempt ${attempt}/${maxCampaignRetries}, skipLogin=${skipLogin})`,
@@ -751,6 +782,10 @@ export class ScrapeSchedulerService {
                 break;
               } catch (err) {
                 campaignLastError = err instanceof Error ? err.message : String(err);
+                if (/target page, context or browser has been closed/i.test(campaignLastError)) {
+                  forceCampaignLoginForRetry = true;
+                  await ensureLivePage(row.client_id);
+                }
                 if (isLikelySessionLogoutError(campaignLastError)) {
                   forceCampaignLoginForRetry = true;
                   this.logger.warn(
@@ -833,16 +868,54 @@ export class ScrapeSchedulerService {
         occurred_at: this.formatReadableDateTime(new Date()),
       };
     });
-    const combinedCsvRows = [...warningCsvRows, ...hardErrorCsvRows];
+    const campaignErrorCsvRows = campaignFailedList.map((f) => {
+      const matchedRow = dedupedRows.find((r) => r.client_id === f.client_id);
+      return {
+        client_id: f.client_id,
+        client_wise_id: matchedRow?.id ?? 0,
+        status: 'campaign_error',
+        filter_applied: 'campaign_summary',
+        message: f.error || 'Campaign summary scrape failed',
+        occurred_at: this.formatReadableDateTime(new Date()),
+      };
+    });
+    const combinedCsvRows = [
+      ...warningCsvRows,
+      ...hardErrorCsvRows,
+      ...campaignErrorCsvRows,
+    ];
     const warningCsvPath = await this.writeNpfWarningCsv(trigger, combinedCsvRows);
     if (warningCsvPath) {
       this.logger.log(`⚠️ NPF warning CSV created: ${warningCsvPath}`);
     }
 
-    // Retry flow intentionally disabled. First phase ends here.
-    if (retryClientIds.size > 0) {
+    // Build retry CSV from selected first-phase failure categories only.
+    const retryCsvRows = combinedCsvRows.filter((row) => {
+      if (row.status === 'hard_error') return true;
+      if (row.status === 'campaign_error') return true;
+      if (row.status === 'metrics_not_found') {
+        return String(row.filter_applied ?? '').trim().toLowerCase() === 'none';
+      }
+      return false;
+    });
+    const retryCsvPath = await this.writeNpfRetryCsv(trigger, retryCsvRows);
+    if (retryCsvPath) {
+      this.logger.log(`🔁 NPF retry CSV created: ${retryCsvPath}`);
+    }
+
+    const retryEnabled = this.getEnvBool('SCRAPER_NPF_RETRY_ENABLED', true);
+    if (retryEnabled && retryCsvRows.length > 0) {
+      this.logger.log(
+        `NPF ${trigger}: first phase completed; starting retry for ${retryCsvRows.length} row(s).`,
+      );
+      await this.runNpfFunnelWarningRetry();
+    } else if (retryCsvRows.length > 0) {
       this.logger.warn(
-        `NPF ${trigger}: first phase completed; retry disabled, skipped ${retryClientIds.size} warning client(s).`,
+        `NPF ${trigger}: retry candidates found (${retryCsvRows.length}) but SCRAPER_NPF_RETRY_ENABLED=false.`,
+      );
+    } else if (retryClientIds.size > 0) {
+      this.logger.warn(
+        `NPF ${trigger}: warning clients detected (${retryClientIds.size}) but none matched configured retry categories.`,
       );
     }
 

@@ -207,3 +207,278 @@ Call log:
 7007053,280,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:18:10
 7050124,284,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:18:15
 7043176,287,warning_retry_second_failed,N/A,Connection terminated due to connection timeout,15-04-2026 22:18:20
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[Nest] 16080  - 04/23/2026, 9:38:51 PM    WARN [FormFillerService] Failed to fill field xpath="/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[2]/div/ng-select" type="select". Skipping optional field.
+[Nest] 16080  - 04/23/2026, 9:38:51 PM     LOG [ScrapperService] Filter settle wait: 3000ms (item_delay=0ms, global_delay=3000ms)
+[Nest] 16080  - 04/23/2026, 9:38:54 PM     LOG [ScrapperService] Filters applied: count=2, failed=0
+[Nest] 16080  - 04/23/2026, 9:38:54 PM     LOG [ScrapperService] 
+
+📝 [LEAD VIEW] - Step: None
+[Nest] 16080  - 04/23/2026, 9:38:54 PM     LOG [ScrapperService] ⏳ Waiting for initial (None) data to load...
+Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+[Nest] 16080  - 04/23/2026, 9:39:05 PM   ERROR [WorkerManagerService] Worker error for queue scrape-db-write-queue:
+[Nest] 16080  - 04/23/2026, 9:39:05 PM   ERROR [WorkerManagerService] Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+[Nest] 16080  - 04/23/2026, 9:39:05 PM   ERROR [WorkerManagerService] Worker error for queue scrape-db-write-queue:
+[Nest] 16080  - 04/23/2026, 9:39:05 PM   ERROR [WorkerManagerService] Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+[Nest] 16080  - 04/23/2026, 9:39:25 PM   ERROR [WorkerManagerService] Worker error for queue scrape-db-write-queue:
+[Nest] 16080  - 04/23/2026, 9:39:25 PM   ERROR [WorkerManagerService] Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+[Nest] 16080  - 04/23/2026, 9:39:25 PM   ERROR [WorkerManagerService] Worker error for queue scrape-db-write-queue:
+[Nest] 16080  - 04/23/2026, 9:39:25 PM   ERROR [WorkerManagerService] Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+[Nest] 16080  - 04/23/2026, 9:39:45 PM   ERROR [WorkerManagerService] Worker error for queue scrape-db-write-queue:
+[Nest] 16080  - 04/23/2026, 9:39:45 PM   ERROR [WorkerManagerService] Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+[Nest] 16080  - 04/23/2026, 9:39:45 PM   ERROR [WorkerManagerService] Worker error for queue scrape-db-write-queue:
+[Nest] 16080  - 04/23/2026, 9:39:45 PM   ERROR [WorkerManagerService] Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+[Nest] 16080  - 04/23/2026, 9:39:55 PM    WARN [ScrapperService] [client_id=7007440] NPF API summary did not update within 30000ms for lead_view:None (baseline_seq=0, current_seq=0)
+[Nest] 16080  - 04/23/2026, 9:39:55 PM    WARN [ScrapperService] [LEAD VIEW] API summary not available for "None" (client_id=7007440).
+[Nest] 16080  - 04/23/2026, 9:39:55 PM     LOG [ScrapperService] 
+
+📝 [LEAD VIEW] - Step: Form Initiated
+[Nest] 16080  - 04/23/2026, 9:39:55 PM     LOG [ScrapperService] Starting applyNpfFilter for: Form Initiated
+[Nest] 16080  - 04/23/2026, 9:39:56 PM     LOG [ScrapperService] Opening Advance Filter to select: "Form Initiated" (#u_form_initiated)
+[Nest] 16080  - 04/23/2026, 9:39:56 PM    WARN [ScrapperService] [client_id=7007440] Advance Filter button not found or not visible.
+[Nest] 16080  - 04/23/2026, 9:39:56 PM    WARN [ScrapperService] [client_id=7007440] [LEAD VIEW] Skipping save for "Form Initiated" because filter was not available/applied.
+[Nest] 16080  - 04/23/2026, 9:39:56 PM     LOG [ScrapperService] 
+
+📝 [LEAD VIEW] - Step: Paid Apps
+[Nest] 16080  - 04/23/2026, 9:39:56 PM     LOG [ScrapperService] Starting applyNpfFilter for: Paid Applications
+[Nest] 16080  - 04/23/2026, 9:39:57 PM     LOG [ScrapperService] Opening Advance Filter to select: "Paid Applications" (#u_payment_approved)
+[Nest] 16080  - 04/23/2026, 9:39:57 PM    WARN [ScrapperService] [client_id=7007440] Advance Filter button not found or not visible.
+[Nest] 16080  - 04/23/2026, 9:39:57 PM    WARN [ScrapperService] [client_id=7007440] [LEAD VIEW] Skipping save for "Paid Apps" because filter was not available/applied.
+[Nest] 16080  - 04/23/2026, 9:39:57 PM     LOG [ScrapperService] 
+
+📝 [LEAD VIEW] - Step: Enrolment Status
+[Nest] 16080  - 04/23/2026, 9:39:57 PM     LOG [ScrapperService] Starting applyNpfFilter for: Enrolment Status
+[Nest] 16080  - 04/23/2026, 9:39:58 PM     LOG [ScrapperService] Opening Advance Filter to select: "Enrolment Status" (#u_enrollment_status)
+[Nest] 16080  - 04/23/2026, 9:39:58 PM    WARN [ScrapperService] [client_id=7007440] Advance Filter button not found or not visible.
+[Nest] 16080  - 04/23/2026, 9:39:58 PM    WARN [ScrapperService] [client_id=7007440] [LEAD VIEW] Skipping save for "Enrolment Status" because filter was not available/applied.
+[Nest] 16080  - 04/23/2026, 9:39:58 PM     LOG [ScrapeSchedulerService] 📈 NPF manual progress: 203/210 processed | success=203 failed=0 skipped=0 warning_clients=123 | client_id=7007440 client_wise_id=210 (completed)
+[Nest] 16080  - 04/23/2026, 9:39:59 PM     LOG [ScrapeSchedulerService] 
+=> Scraping NPF Funnel for client_wise_id=264 client_id=7051155 (Attempt 1/3, Skipping Login: true)
+[Nest] 16080  - 04/23/2026, 9:39:59 PM     LOG [ScrapperService] Starting optimized NPF Funnel scrape for client_id=undefined
+[Nest] 16080  - 04/23/2026, 9:39:59 PM     LOG [ScrapperService] Skipping login, reusing existing session for 7051155
+[Nest] 16080  - 04/23/2026, 9:39:59 PM     LOG [ScrapperService] 🚀 [PART 1] STARTING ALL LEAD VIEW PASSES...
+[Nest] 16080  - 04/23/2026, 9:39:59 PM     LOG [ScrapperService] Lead view already open after login, skipping reload: https://publisher.in6.nopaperforms.com/lead/details
+[Nest] 16080  - 04/23/2026, 9:40:01 PM     LOG [ScrapperService] Applying Base Filters to Lead View (Once)...
+[Nest] 16080  - 04/23/2026, 9:40:01 PM     LOG [ScrapperService] Applying filters: total_items=2 context=npf_base_filters_attempt_1
+[Nest] 16080  - 04/23/2026, 9:40:01 PM     LOG [ScrapperService] Filter[1/2] apply: selector_type=searchable_dropdown formType=select name=Client Name value_to_apply=Arya College of Engineering match_count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:01 PM     LOG [ScrapperService] Locator readiness check attempt=1 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:01 PM     LOG [ScrapperService] Locator readiness check attempt=2 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:02 PM     LOG [ScrapperService] Locator readiness check attempt=3 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:02 PM     LOG [ScrapperService] Locator readiness check attempt=4 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:03 PM     LOG [ScrapperService] Locator readiness check attempt=5 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:03 PM     LOG [ScrapperService] Locator readiness check attempt=6 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:03 PM     LOG [ScrapperService] Locator readiness check attempt=7 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:04 PM     LOG [ScrapperService] Locator readiness check attempt=8 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:04 PM     LOG [ScrapperService] Locator readiness check attempt=9 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:05 PM     LOG [ScrapperService] Locator readiness check attempt=10 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:05 PM   ERROR [WorkerManagerService] Worker error for queue scrape-db-write-queue:
+[Nest] 16080  - 04/23/2026, 9:40:05 PM   ERROR [WorkerManagerService] Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+[Nest] 16080  - 04/23/2026, 9:40:05 PM   ERROR [WorkerManagerService] Worker error for queue scrape-db-write-queue:
+[Nest] 16080  - 04/23/2026, 9:40:05 PM   ERROR [WorkerManagerService] Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+[Nest] 16080  - 04/23/2026, 9:40:05 PM     LOG [ScrapperService] Locator readiness check attempt=11 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:05 PM     LOG [ScrapperService] Locator readiness check attempt=12 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:06 PM     LOG [ScrapperService] Locator readiness check attempt=13 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:06 PM     LOG [ScrapperService] Locator readiness check attempt=14 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:07 PM     LOG [ScrapperService] Locator readiness check attempt=15 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:07 PM     LOG [ScrapperService] Locator readiness check attempt=16 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:07 PM     LOG [ScrapperService] Locator readiness check attempt=17 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:08 PM     LOG [ScrapperService] Locator readiness check attempt=18 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:08 PM     LOG [ScrapperService] Locator readiness check attempt=19 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:09 PM     LOG [ScrapperService] Locator readiness check attempt=20 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:09 PM     LOG [ScrapperService] Locator readiness check attempt=21 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:09 PM     LOG [ScrapperService] Locator readiness check attempt=22 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:10 PM     LOG [ScrapperService] Locator readiness check attempt=23 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:10 PM     LOG [ScrapperService] Locator readiness check attempt=24 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:11 PM     LOG [ScrapperService] Locator readiness check attempt=25 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:11 PM     LOG [ScrapperService] Locator readiness check attempt=26 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:11 PM     LOG [ScrapperService] Locator readiness check attempt=27 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:12 PM     LOG [ScrapperService] Locator readiness check attempt=28 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:12 PM     LOG [ScrapperService] Locator readiness check attempt=29 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:13 PM     LOG [ScrapperService] Locator readiness check attempt=30 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:13 PM    WARN [ScrapperService] Locator did not reappear in 12000ms xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:40:13 PM     LOG [ScrapperService] Filter[1/2] pre-attempt 1/3 locator_ready=false
+[Nest] 16080  - 04/23/2026, 9:40:25 PM   ERROR [WorkerManagerService] Worker error for queue scrape-db-write-queue:
+[Nest] 16080  - 04/23/2026, 9:40:25 PM   ERROR [WorkerManagerService] Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+[Nest] 16080  - 04/23/2026, 9:40:25 PM   ERROR [WorkerManagerService] Worker error for queue scrape-db-write-queue:
+[Nest] 16080  - 04/23/2026, 9:40:25 PM   ERROR [WorkerManagerService] Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+[Nest] 16080  - 04/23/2026, 9:40:43 PM     LOG [FormFillerService] Fill field start: type=select xpath="/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[1]/div/ng-select" matches=0 value="Arya College of Engineering"
+[Nest] 16080  - 04/23/2026, 9:40:45 PM   ERROR [WorkerManagerService] Worker error for queue scrape-db-write-queue:
+[Nest] 16080  - 04/23/2026, 9:40:45 PM   ERROR [WorkerManagerService] Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+[Nest] 16080  - 04/23/2026, 9:40:45 PM   ERROR [WorkerManagerService] Worker error for queue scrape-db-write-queue:
+[Nest] 16080  - 04/23/2026, 9:40:45 PM   ERROR [WorkerManagerService] Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+    at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 6379
+}
+
+}
+[Nest] 16080  - 04/23/2026, 9:41:25 PM     LOG [ScrapperService] Locator readiness check attempt=22 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[2]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:41:25 PM     LOG [ScrapperService] Locator readiness check attempt=23 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[2]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:41:26 PM     LOG [ScrapperService] Locator readiness check attempt=24 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[2]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:41:26 PM     LOG [ScrapperService] Locator readiness check attempt=25 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[2]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:41:26 PM     LOG [ScrapperService] Locator readiness check attempt=26 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[2]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:41:27 PM     LOG [ScrapperService] Locator readiness check attempt=27 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[2]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:41:27 PM     LOG [ScrapperService] Locator readiness check attempt=28 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[2]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:41:28 PM     LOG [ScrapperService] Locator readiness check attempt=29 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[2]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:41:28 PM     LOG [ScrapperService] Locator readiness check attempt=30 count=0 xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[2]/div/ng-select
+[Nest] 16080  - 04/23/2026, 9:41:28 PM    WARN [ScrapperService] Locator did not reappear in 12000ms xpath=/html/body/app-root/app-layout/section/app-detail/div/div[2]/div/app-fieldsearch/form/div[1]/div[2]/div/ng-select

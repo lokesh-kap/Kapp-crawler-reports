@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { MoreThanOrEqual, Repository } from 'typeorm';
+import { Between, MoreThanOrEqual, Repository } from 'typeorm';
 import { ClientWiseEntity } from '../client-wise/entities/client-wise.entity';
 import { ClientWiseLeadsConfigEntity } from '../client-wise/entities/client-wise-leads-config.entity';
 import { ClientWiseSummaryConfigEntity } from '../client-wise/entities/client-wise-summary-config.entity';
@@ -224,6 +224,40 @@ export class ScrapperService implements OnModuleInit {
     );
   }
 
+  private async waitForNpfFilterPanelReady(
+    page: Page,
+    clientId: number,
+    contextLabel: string,
+    timeoutMs = 12000,
+  ): Promise<boolean> {
+    const panel = page.locator('app-fieldsearch form').first();
+    const college = page
+      .locator("xpath=//app-fieldsearch//ng-select[@formcontrolname='college_id']")
+      .first();
+    const source = page
+      .locator("xpath=//app-fieldsearch//ng-select[@formcontrolname='publisher_id']")
+      .first();
+
+    const ready = await (async () => {
+      try {
+        await panel.waitFor({ state: 'visible', timeout: timeoutMs });
+      } catch {
+        return false;
+      }
+      const collegeCount = await college.count().catch(() => 0);
+      const sourceCount = await source.count().catch(() => 0);
+      return collegeCount > 0 || sourceCount > 0;
+    })();
+
+    if (!ready) {
+      this.npfWarn(
+        `Filter panel not ready (${contextLabel}); app-fieldsearch/filters missing in DOM.`,
+        clientId,
+      );
+    }
+    return ready;
+  }
+
   private async applyNpfBaseFiltersWithRecovery(
     page: Page,
     dto: ScrapeTargetDto,
@@ -231,8 +265,18 @@ export class ScrapperService implements OnModuleInit {
     leadsConfig: ClientWiseLeadsConfigEntity,
   ): Promise<void> {
     const maxReloadRetries = this.getEnvInt('SCRAPER_NPF_FILTER_RELOAD_RETRIES', 1);
+    let forcedReloginTried = false;
     for (let attempt = 0; attempt <= maxReloadRetries; attempt += 1) {
       try {
+        const panelReady = await this.waitForNpfFilterPanelReady(
+          page,
+          clientWise.client_id,
+          `npf_base_filters_attempt_${attempt + 1}-precheck`,
+        );
+        if (!panelReady) {
+          throw new Error('dom_not_ready: filter panel not present');
+        }
+
         await this.applyFilters(page, leadsConfig.filters ?? [], {
           clientId: clientWise.client_id,
           throwOnFailure: true,
@@ -264,6 +308,21 @@ export class ScrapperService implements OnModuleInit {
           clientWise.client_id,
         );
         await this.ensureNpfLeadViewReady(page, dto, clientWise, leadsConfig.url);
+
+        const panelReadyAfterReload = await this.waitForNpfFilterPanelReady(
+          page,
+          clientWise.client_id,
+          `npf_base_filters_attempt_${attempt + 1}-after-reload`,
+        );
+        if (!panelReadyAfterReload && !forcedReloginTried) {
+          forcedReloginTried = true;
+          this.npfWarn(
+            'Filter panel still missing after reload; forcing fresh login once before next retry.',
+            clientWise.client_id,
+          );
+          await this.login(page, dto, clientWise);
+          await this.ensureNpfLeadViewReady(page, dto, clientWise, leadsConfig.url);
+        }
       }
     }
   }
@@ -290,6 +349,16 @@ export class ScrapperService implements OnModuleInit {
       if (payload.target === 'leads') {
         await this.leadsDataRepository.save(entities as ClientWiseLeadsDataEntity[]);
       } else if (payload.target === 'summary') {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const tomorrowStart = new Date(todayStart);
+        tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+        // Keep summary writes idempotent for a client/day.
+        await this.summaryDataRepository.delete({
+          client_id: payload.meta.client_id,
+          created_at: Between(todayStart, tomorrowStart),
+        });
         await this.summaryDataRepository.save(entities as ClientWiseSummaryDataEntity[]);
       } else if (payload.target === 'npf_funnel') {
         const npfEntities = entities as NpfFunnelSummaryEntity[];
@@ -2084,22 +2153,56 @@ export class ScrapperService implements OnModuleInit {
 
     this.logger.log('Advanced filters enabled; attempting to open advanced filter UI...');
 
-    const advToggleXpath =
+    // Prefer stable structure-based locators first. Keep XPath heuristic as fallback.
+    const explicitToggleXpath =
       dto.advanced_filters_toggle_xpath && dto.advanced_filters_toggle_xpath.trim().length > 0
         ? dto.advanced_filters_toggle_xpath.trim()
-        : `
-            //button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'advanced')]
-            | //a[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'advanced')]
-            | //*[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'advanced filters')]
-          `.trim().replace(/\s+/g, ' ');
+        : null;
+    const fallbackHeuristicXpath = `
+      //app-advancefilter//button[contains(normalize-space(.), 'Advance Filter')]
+      | //button[contains(normalize-space(.), 'Advance Filter')]
+      | //button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'advanced filter')]
+      | //a[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'advanced filter')]
+      | //*[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'advanced filters')]
+    `.trim().replace(/\s+/g, ' ');
 
-    try {
-      await page.locator(`xpath=${advToggleXpath}`).first().click({ timeout: 7000 });
-      this.logger.log('Advanced filter toggle clicked.');
-    } catch (err) {
+    const candidates: Array<{ label: string; locator: ReturnType<Page['locator']> }> = [];
+    if (explicitToggleXpath) {
+      candidates.push({
+        label: 'dto.advanced_filters_toggle_xpath',
+        locator: page.locator(`xpath=${explicitToggleXpath}`).first(),
+      });
+    }
+    candidates.push(
+      {
+        label: 'app-advancefilter button',
+        locator: page.locator('app-advancefilter button').first(),
+      },
+      {
+        label: 'button text "Advance Filter"',
+        locator: page.getByRole('button', { name: /advance filter/i }).first(),
+      },
+      {
+        label: 'heuristic xpath fallback',
+        locator: page.locator(`xpath=${fallbackHeuristicXpath}`).first(),
+      },
+    );
+
+    let clicked = false;
+    for (const candidate of candidates) {
+      try {
+        await candidate.locator.waitFor({ state: 'visible', timeout: 2500 });
+        await candidate.locator.click({ timeout: 5000 });
+        this.logger.log(`Advanced filter toggle clicked via ${candidate.label}.`);
+        clicked = true;
+        break;
+      } catch {
+        // try next candidate
+      }
+    }
+    if (!clicked) {
       this.logger.warn(
-        'Could not click advanced filter toggle using heuristic; continuing to attempt to fill advanced filters.',
-        err instanceof Error ? err.stack : undefined,
+        'Could not click advanced filter toggle using known locators; continuing to attempt to fill advanced filters.',
       );
     }
 
@@ -2816,7 +2919,7 @@ export class ScrapperService implements OnModuleInit {
         // Then advanced phase.
         if ((targetConfig as any).is_advance_filters) {
           await this.openAdvancedFiltersIfNeeded(page, dto, targetConfig);
-        if (useLegacyStepTable && stepCount > 0) {
+          if (useLegacyStepTable && stepCount > 0) {
             await this.executeStepGroup(page, clientWise.id, target, 'advanced');
             await this.waitBetweenStepPhases(page, 'after advanced steps');
           }
