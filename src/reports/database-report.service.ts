@@ -6,6 +6,7 @@ import * as ExcelJS from 'exceljs';
 import { parse } from 'csv-parse/sync';
 import axios from 'axios';
 import { MailerService } from '../common/mailer/mailer.service';
+import { classicEmailTemplate } from '../common/mailer/classic-email-template';
 
 type DatabaseMappingRow = {
   client_id: number;
@@ -193,14 +194,16 @@ export class DatabaseReportService {
       return { success: true, message: 'Skipped — no recipients.' };
     }
 
-    const html = `
-      <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#222">
-        <p>Hi Team,</p>
-        <p>Please find attached the <strong>Database Report</strong> for <strong>${reportDate}</strong>.</p>
-        <p>Rows: <strong>${rows.length}</strong> | Databases: <strong>${new Set(rows.map((x) => x.database_name)).size}</strong></p>
-        <p>Thanks.</p>
-      </div>
-    `;
+    const html = classicEmailTemplate({
+      title: `Database Report - ${reportDate}`,
+      intro: `Please find attached the Database Report for ${reportDate}.`,
+      highlights: [
+        `Rows: ${rows.length}`,
+        `Databases: ${new Set(rows.map((x) => x.database_name)).size}`,
+        `Unique medium codes: ${new Set(rows.map((x) => x.medium_code.toLowerCase())).size}`,
+      ],
+      closingText: 'The full report is attached in Excel format for detailed review.',
+    });
 
     await this.mailer.sendMail({
       to: toList,
