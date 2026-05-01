@@ -7,6 +7,9 @@ import { buildEmailTemplate } from '../common/mailer/email-template';
 
 interface ReportRow {
   campaign: string;
+  client_name: string;
+  account_handled_by: string;
+  tracking_id: string;
   google_campaign_id: string;
   date: string;
   ads_start_date: string;
@@ -52,6 +55,9 @@ interface ReportRow {
 
 type LmsMetadataRow = {
   client_id: number;
+  client_name?: string | null;
+  trackingId?: string | number | null;
+  key?: string | null;
   panel?: string | null;
   crm?: string | null;
   crm_data_status?: string | null;
@@ -81,11 +87,21 @@ export class GoogleAdsReportService {
     }
 
     const lmsMeta = await this.fetchLmsClientMetadataMap();
-    const reportRows: ReportRow[] = sqlRows.map((r) => this.mapSqlToReportRow(r, lmsMeta));
+    const mappedSqlRows = sqlRows.filter((r) => r.client_id != null);
+    if (mappedSqlRows.length === 0) {
+      this.logger.warn(
+        'No mapped Google Ads report rows found (campaigns without active ads_mapping were excluded).',
+      );
+      return { success: true, message: 'No mapped rows found.' };
+    }
+    const reportRows: ReportRow[] = mappedSqlRows
+      .map((r) => this.mapSqlToReportRow(r, lmsMeta))
+      .sort((a, b) => Number(b.daily_cost_inr || 0) - Number(a.daily_cost_inr || 0));
+    const reportRowsWithTotal = this.buildRowsWithTotal(reportRows);
 
     const latestDate = reportRows.reduce((acc, x) => (x.date > acc ? x.date : acc), '');
     const effectiveMetricsDate = latestDate || campaignMetricsDate;
-    const { buffer, columnsData, rowsData } = await this.buildExcel(reportRows, effectiveMetricsDate);
+    const { buffer, columnsData, rowsData } = await this.buildExcel(reportRowsWithTotal, effectiveMetricsDate);
     const emailCols = columnsData;
     const emailRows = rowsData.map((row) => {
       const slim: Record<string, unknown> = {};
@@ -104,10 +120,16 @@ export class GoogleAdsReportService {
 
     const html = buildEmailTemplate({
       title: 'Google Ads Report',
-      subtitle: 'Daily campaign performance snapshot',
+      subtitle: `Daily campaign performance snapshot | Metric Date: ${effectiveMetricsDate} | Rows: ${reportRows.length}`,
       date: reportDate,
-      summaryCards: [
-        { label: 'Rows', value: reportRows.length },
+      summaryCards: [],
+      mainTableHasTotalRow: true,
+      mainTableGroupHeaders: [
+        { label: 'Campaign Details', span: 6, bgColor: '#e5e7eb', textColor: '#111827' },
+        { label: 'Daily Matrix', span: 3, bgColor: '#fde68a', textColor: '#111827' },
+        { label: 'Montly Matrix', span: 5, bgColor: '#c7d2fe', textColor: '#111827' },
+        { label: 'Overall Matrix', span: 7, bgColor: '#f9a8d4', textColor: '#111827' },
+        { label: 'Other Meta Details', span: 15, bgColor: '#d1fae5', textColor: '#111827' },
       ],
       columns: emailCols,
       rows: emailRows as Record<string, any>[],
@@ -120,12 +142,12 @@ export class GoogleAdsReportService {
       cc: ccList.length ? ccList : undefined,
       subject: `Google Ads Report — ${reportDate} (metrics: ${effectiveMetricsDate})`,
       html,
-      attachments: [
-        {
-          filename: `Google_Ads_Report_${reportDate}.xlsx`,
-          content: buffer,
-        },
-      ],
+      // attachments: [
+      //   {
+      //     filename: `Google_Ads_Report_${reportDate}.xlsx`,
+      //     content: buffer,
+      //   },
+      // ],
     });
 
     return { success: true };
@@ -158,7 +180,11 @@ export class GoogleAdsReportService {
       report_day AS (
         SELECT
           $1::date AS report_date,
-          $2::date AS campaign_metrics_date
+          $2::date AS campaign_metrics_date,
+          CASE
+            WHEN EXTRACT(DAY FROM $1::date) = 1 THEN ($1::date - INTERVAL '1 day')::date
+            ELSE $1::date
+          END AS monthly_anchor_date
       ),
       summary_cumulative AS (
         SELECT
@@ -203,20 +229,46 @@ export class GoogleAdsReportService {
       summary_points AS (
         SELECT
           mc."campaignInfoId",
-          GREATEST(0, COALESCE(curr.leads, 0) - COALESCE(prev_day.leads, 0))::bigint AS daily_leads,
-          GREATEST(0, COALESCE(curr.applications, 0) - COALESCE(prev_day.applications, 0))::bigint AS daily_apps,
-          GREATEST(0, COALESCE(curr.enrolments, 0) - COALESCE(prev_day.enrolments, 0))::numeric AS daily_enrolments,
-          GREATEST(0, COALESCE(curr.leads, 0) - COALESCE(prev_month.leads, 0))::bigint AS monthly_leads,
-          GREATEST(0, COALESCE(curr.applications, 0) - COALESCE(prev_month.applications, 0))::bigint AS monthly_apps,
-          GREATEST(0, COALESCE(curr.enrolments, 0) - COALESCE(prev_month.enrolments, 0))::numeric AS monthly_enrolments,
-          COALESCE(curr.leads, 0)::bigint AS total_leads,
-          COALESCE(curr.applications, 0)::bigint AS total_apps,
-          COALESCE(curr.enrolments, 0)::numeric AS total_enrolments
+          CASE
+            WHEN curr.metric_date IS NULL THEN NULL
+            ELSE GREATEST(0, COALESCE(curr.leads, 0) - COALESCE(prev_day.leads, 0))::bigint
+          END AS daily_leads,
+          CASE
+            WHEN curr.metric_date IS NULL THEN NULL
+            ELSE GREATEST(0, COALESCE(curr.applications, 0) - COALESCE(prev_day.applications, 0))::bigint
+          END AS daily_apps,
+          CASE
+            WHEN curr.metric_date IS NULL THEN NULL
+            ELSE GREATEST(0, COALESCE(curr.enrolments, 0) - COALESCE(prev_day.enrolments, 0))::numeric
+          END AS daily_enrolments,
+          CASE
+            WHEN monthly_curr.metric_date IS NULL THEN NULL
+            ELSE GREATEST(0, COALESCE(monthly_curr.leads, 0) - COALESCE(prev_month.leads, 0))::bigint
+          END AS monthly_leads,
+          CASE
+            WHEN monthly_curr.metric_date IS NULL THEN NULL
+            ELSE GREATEST(0, COALESCE(monthly_curr.applications, 0) - COALESCE(prev_month.applications, 0))::bigint
+          END AS monthly_apps,
+          CASE
+            WHEN monthly_curr.metric_date IS NULL THEN NULL
+            ELSE GREATEST(0, COALESCE(monthly_curr.enrolments, 0) - COALESCE(prev_month.enrolments, 0))::numeric
+          END AS monthly_enrolments,
+          CASE WHEN curr.metric_date IS NULL THEN NULL ELSE COALESCE(curr.leads, 0)::bigint END AS total_leads,
+          CASE WHEN curr.metric_date IS NULL THEN NULL ELSE COALESCE(curr.applications, 0)::bigint END AS total_apps,
+          CASE WHEN curr.metric_date IS NULL THEN NULL ELSE COALESCE(curr.enrolments, 0)::numeric END AS total_enrolments
         FROM mapping_client mc
         CROSS JOIN report_day rd
         LEFT JOIN summary_cumulative curr
           ON curr."campaignInfoId" = mc."campaignInfoId"
          AND curr.metric_date = rd.report_date
+        LEFT JOIN LATERAL (
+          SELECT sc.metric_date, sc.leads, sc.applications, sc.enrolments
+          FROM summary_cumulative sc
+          WHERE sc."campaignInfoId" = mc."campaignInfoId"
+            AND sc.metric_date <= rd.monthly_anchor_date
+          ORDER BY sc.metric_date DESC
+          LIMIT 1
+        ) monthly_curr ON true
         LEFT JOIN LATERAL (
           SELECT sc.leads, sc.applications, sc.enrolments
           FROM summary_cumulative sc
@@ -229,7 +281,7 @@ export class GoogleAdsReportService {
           SELECT sc.leads, sc.applications, sc.enrolments
           FROM summary_cumulative sc
           WHERE sc."campaignInfoId" = mc."campaignInfoId"
-            AND sc.metric_date < date_trunc('month', rd.report_date)::date
+            AND sc.metric_date < date_trunc('month', rd.monthly_anchor_date)::date
           ORDER BY sc.metric_date DESC
           LIMIT 1
         ) prev_month ON true
@@ -239,6 +291,7 @@ export class GoogleAdsReportService {
           cm.date::text AS metric_date,
           rd.campaign_metrics_date::date AS report_latest_date,
           rd.report_date::date AS report_summary_date,
+          rd.monthly_anchor_date::date AS monthly_anchor_date,
           cm.impressions::bigint AS impressions,
           cm.clicks::bigint AS clicks,
           cm.ctr::double precision AS ctr,
@@ -254,15 +307,15 @@ export class GoogleAdsReportService {
           aa."externalCustomerId" AS account_id,
           aa.status::text AS account_status,
           mc.client_id,
-          COALESCE(sp.daily_leads, 0)::bigint AS leads,
-          COALESCE(sp.daily_apps, 0)::bigint AS applications,
-          COALESCE(sp.daily_enrolments, 0)::numeric AS enrolments,
-          COALESCE(sp.monthly_leads, 0)::bigint AS monthly_leads,
-          COALESCE(sp.monthly_apps, 0)::bigint AS monthly_apps,
-          COALESCE(sp.monthly_enrolments, 0)::numeric AS monthly_enrolments,
-          COALESCE(sp.total_leads, 0)::bigint AS total_leads,
-          COALESCE(sp.total_apps, 0)::bigint AS total_apps,
-          COALESCE(sp.total_enrolments, 0)::numeric AS total_enrolments
+          sp.daily_leads::bigint AS leads,
+          sp.daily_apps::bigint AS applications,
+          sp.daily_enrolments::numeric AS enrolments,
+          sp.monthly_leads::bigint AS monthly_leads,
+          sp.monthly_apps::bigint AS monthly_apps,
+          sp.monthly_enrolments::numeric AS monthly_enrolments,
+          sp.total_leads::bigint AS total_leads,
+          sp.total_apps::bigint AS total_apps,
+          sp.total_enrolments::numeric AS total_enrolments
         FROM campaign_metrics cm
         CROSS JOIN latest_day ld
         CROSS JOIN report_day rd
@@ -281,7 +334,7 @@ export class GoogleAdsReportService {
           b.*,
           SUM(
             CASE
-              WHEN b.metric_date::date >= date_trunc('month', b.report_summary_date)::date
+              WHEN b.metric_date::date >= date_trunc('month', b.monthly_anchor_date)::date
               THEN b.spend
               ELSE 0
             END
@@ -309,24 +362,39 @@ export class GoogleAdsReportService {
     r: any,
     lmsMetaMap: Map<number, LmsMetadataRow>,
   ): ReportRow {
+    const parseNullableNumber = (value: unknown): number | null => {
+      if (value === null || value === undefined || value === '') return null;
+      const n = Number(value);
+      return Number.isFinite(n) ? n : null;
+    };
     const hasAdsMapping = r.client_id != null;
     const clientId = Number(r.client_id);
     const lms = Number.isFinite(clientId) ? lmsMetaMap.get(clientId) : undefined;
-    const dailyLeads = Number(r.leads ?? 0);
-    const monthlyLeads = Number(r.monthly_leads ?? 0);
-    const monthlyApps = Number(r.monthly_apps ?? 0);
-    const totalLeads = Number(r.total_leads ?? 0);
-    const totalApps = Number(r.total_apps ?? 0);
+    const dailyLeads = parseNullableNumber(r.leads);
+    const monthlyLeads = parseNullableNumber(r.monthly_leads);
+    const monthlyApps = parseNullableNumber(r.monthly_apps);
+    const totalLeads = parseNullableNumber(r.total_leads);
+    const totalApps = parseNullableNumber(r.total_apps);
     const dailyCost = r.spend != null ? Number(r.spend) : null;
     const monthlyCost = r.monthly_cost != null ? Number(r.monthly_cost) : null;
     const totalSpend = r.total_spend != null ? Number(r.total_spend) : null;
-    const totalEnrolments = r.total_enrolments != null ? Number(r.total_enrolments) : 0;
-    const dailyCpl = dailyCost != null && dailyLeads > 0 ? dailyCost / dailyLeads : null;
-    const monthlyCpl = monthlyCost != null && monthlyLeads > 0 ? monthlyCost / monthlyLeads : null;
-    const monthlyCpa = monthlyCost != null && monthlyApps > 0 ? monthlyCost / monthlyApps : null;
-    const totalCpa = totalSpend != null && totalApps > 0 ? totalSpend / totalApps : null;
-    const totalCps = totalSpend != null && totalEnrolments > 0 ? totalSpend / totalEnrolments : null;
-    const clickToLead = Number(r.clicks ?? 0) > 0 ? (dailyLeads / Number(r.clicks ?? 0)) * 100 : null;
+    const totalEnrolments = parseNullableNumber(r.total_enrolments);
+    const dailyCpl =
+      dailyCost != null && dailyLeads != null && dailyLeads > 0 ? dailyCost / dailyLeads : null;
+    const monthlyCpl =
+      monthlyCost != null && monthlyLeads != null && monthlyLeads > 0 ? monthlyCost / monthlyLeads : null;
+    const monthlyCpa =
+      monthlyCost != null && monthlyApps != null && monthlyApps > 0 ? monthlyCost / monthlyApps : null;
+    const totalCpa =
+      totalSpend != null && totalApps != null && totalApps > 0 ? totalSpend / totalApps : null;
+    const totalCps =
+      totalSpend != null && totalEnrolments != null && totalEnrolments > 0
+        ? totalSpend / totalEnrolments
+        : null;
+    const totalCpl =
+      totalSpend != null && totalLeads != null && totalLeads > 0 ? totalSpend / totalLeads : null;
+    const clickToLead =
+      Number(r.clicks ?? 0) > 0 && dailyLeads != null ? (dailyLeads / Number(r.clicks ?? 0)) * 100 : null;
     const daysRunning = this.daysFromStartDate(r.campaign_start_date);
 
     const biddingLabel = this.formatBiddingStrategy(r.bidding_strategy);
@@ -334,23 +402,29 @@ export class GoogleAdsReportService {
     const courseStream = this.stringifyCampaignNames(lms?.campaign_names);
     const panel = String(lms?.panel ?? lms?.crm ?? '').trim();
     const zone = String(lms?.account_zone ?? '').trim();
+    const trackingId = this.extractTrackingId(lms?.key, r.campaign_name, lms?.trackingId);
+    const clientName = String(lms?.client_name ?? '').trim();
+    const accountHandledBy = this.extractAccountHandledBy(lms?.key, r.campaign_name);
     const masked = String(lms?.crm_data_status ?? '').trim();
     const billing = String(lms?.performance_parameter ?? '').trim();
 
     return {
       campaign: String(r.campaign_name ?? ''),
+      client_name: clientName,
+      account_handled_by: accountHandledBy,
+      tracking_id: trackingId,
       google_campaign_id: String(r.external_campaign_id ?? ''),
       date: String(r.metric_date ?? ''),
       ads_start_date: String(r.campaign_start_date ?? ''),
       hidden_open: '',
       course_stream: courseStream,
-      budget_inr: r.daily_budget != null ? Number(r.daily_budget) : '',
+      budget_inr: r.daily_budget != null ? Number(Number(r.daily_budget).toFixed(2)) : '',
       impressions: r.impressions != null ? Number(r.impressions) : '',
       clicks: r.clicks != null ? Number(r.clicks) : '',
-      ctr: r.ctr != null ? Number(r.ctr) : '',
-      avg_cpc: r.avg_cpc != null ? Number(r.avg_cpc) : '',
-      primary_leads: hasAdsMapping ? String(dailyLeads) : '',
-      daily_cost_inr: r.spend != null ? Number(r.spend) : '',
+      ctr: r.ctr != null ? Number(Number(r.ctr).toFixed(2)) : '',
+      avg_cpc: r.avg_cpc != null ? Number(Number(r.avg_cpc).toFixed(2)) : '',
+      primary_leads: hasAdsMapping && dailyLeads != null ? String(dailyLeads) : '',
+      daily_cost_inr: r.spend != null ? Number(Number(r.spend).toFixed(2)) : '',
       cpl: dailyCpl != null ? dailyCpl.toFixed(2) : '',
       click_to_lead: clickToLead != null ? clickToLead.toFixed(2) : '',
       panel,
@@ -359,19 +433,19 @@ export class GoogleAdsReportService {
       account_id: String(r.account_id ?? ''),
       account_active_suspended: accountLabel,
       days_campaign_running: daysRunning,
-      monthly_cost: r.monthly_cost != null ? Number(r.monthly_cost) : '',
-      month_leads: hasAdsMapping && monthlyLeads > 0 ? String(monthlyLeads) : '',
+      monthly_cost: r.monthly_cost != null ? Number(Number(r.monthly_cost).toFixed(2)) : '',
+      month_leads: hasAdsMapping && monthlyLeads != null ? String(monthlyLeads) : '',
       monthly_cpl: hasAdsMapping && monthlyCpl != null ? monthlyCpl.toFixed(2) : '',
-      month_applications: hasAdsMapping && monthlyApps > 0 ? String(monthlyApps) : '',
+      month_applications: hasAdsMapping && monthlyApps != null ? String(monthlyApps) : '',
       monthly_cpa: hasAdsMapping && monthlyCpa != null ? monthlyCpa.toFixed(2) : '',
-      total_spend: r.total_spend != null ? Number(r.total_spend) : '',
-      total_leads: hasAdsMapping && totalLeads > 0 ? String(totalLeads) : '',
-      total_cpl: '',
-      total_apps: hasAdsMapping && totalApps > 0 ? String(totalApps) : '',
+      total_spend: r.total_spend != null ? Number(Number(r.total_spend).toFixed(2)) : '',
+      total_leads: hasAdsMapping && totalLeads != null ? String(totalLeads) : '',
+      total_cpl: hasAdsMapping && totalCpl != null ? totalCpl.toFixed(2) : '',
+      total_apps: hasAdsMapping && totalApps != null ? String(totalApps) : '',
       total_cpa: hasAdsMapping && totalCpa != null ? totalCpa.toFixed(2) : '',
-      overall_enrolments: hasAdsMapping && totalEnrolments > 0 ? String(totalEnrolments) : '',
+      overall_enrolments: hasAdsMapping && totalEnrolments != null ? String(totalEnrolments) : '',
       total_cps: hasAdsMapping && totalCps != null ? totalCps.toFixed(2) : '',
-      platform: String(r.platform ?? 'google').toLowerCase(),
+      platform: 'Adword',
       zone,
       team: '',
       cluster: '',
@@ -460,6 +534,49 @@ export class GoogleAdsReportService {
       .join(' ');
   }
 
+  private splitCompositeParts(rawValue: unknown): string[] {
+    const raw = String(rawValue ?? '').trim();
+    if (!raw || raw.toLowerCase() === 'null' || raw.toLowerCase() === 'undefined') return [];
+    // Support both "a || b || c" and "a | b | c".
+    const parts = raw
+      .split(/\|{1,2}/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    return parts;
+  }
+
+  private extractAccountHandledBy(primaryKeyValue: unknown, campaignText: unknown): string {
+    const keyParts = this.splitCompositeParts(primaryKeyValue);
+    if (keyParts.length >= 7) return keyParts[keyParts.length - 1] ?? '';
+    const campaignParts = this.splitCompositeParts(campaignText);
+    if (campaignParts.length >= 7) return campaignParts[campaignParts.length - 1] ?? '';
+    return '';
+  }
+
+  private extractTrackingId(
+    primaryKeyValue: unknown,
+    campaignText: unknown,
+    fallbackTrackingId: unknown,
+  ): string {
+    const keyParts = this.splitCompositeParts(primaryKeyValue);
+    if (keyParts.length >= 5) {
+      const fromKey = String(keyParts[4] ?? '').trim();
+      if (fromKey) return fromKey;
+    }
+
+    const campaignParts = this.splitCompositeParts(campaignText);
+    if (campaignParts.length >= 5) {
+      const fromCampaign = String(campaignParts[4] ?? '').trim();
+      if (fromCampaign) return fromCampaign;
+    }
+
+    const fallback = String(fallbackTrackingId ?? '').trim();
+    if (!fallback || fallback.toLowerCase() === 'null' || fallback.toLowerCase() === 'undefined') {
+      return '';
+    }
+    return fallback;
+  }
+
   private getReportDateString(): string {
     const override = (process.env.REPORT_AS_OF_DATE || '').trim();
     if (override) {
@@ -502,49 +619,126 @@ export class GoogleAdsReportService {
     return `${y}-${m}-${dd}`;
   }
 
+  private buildRowsWithTotal(rows: ReportRow[]): ReportRow[] {
+    const toNum = (v: unknown): number => {
+      if (v === null || v === undefined || v === '') return 0;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const totals = {
+      leads: rows.reduce((acc, row) => acc + toNum(row.primary_leads), 0),
+      dailyCost: rows.reduce((acc, row) => acc + toNum(row.daily_cost_inr), 0),
+      monthlyCost: rows.reduce((acc, row) => acc + toNum(row.monthly_cost), 0),
+      monthLeads: rows.reduce((acc, row) => acc + toNum(row.month_leads), 0),
+      monthApps: rows.reduce((acc, row) => acc + toNum(row.month_applications), 0),
+      totalSpend: rows.reduce((acc, row) => acc + toNum(row.total_spend), 0),
+      totalLeads: rows.reduce((acc, row) => acc + toNum(row.total_leads), 0),
+      totalApps: rows.reduce((acc, row) => acc + toNum(row.total_apps), 0),
+      totalEnrolments: rows.reduce((acc, row) => acc + toNum(row.overall_enrolments), 0),
+    };
+
+    const cpl = totals.leads > 0 ? totals.dailyCost / totals.leads : null;
+    const monthlyCpl = totals.monthLeads > 0 ? totals.monthlyCost / totals.monthLeads : null;
+    const monthlyCpa = totals.monthApps > 0 ? totals.monthlyCost / totals.monthApps : null;
+    const totalCpl = totals.totalLeads > 0 ? totals.totalSpend / totals.totalLeads : null;
+    const totalCpa = totals.totalApps > 0 ? totals.totalSpend / totals.totalApps : null;
+    const totalCps =
+      totals.totalEnrolments > 0 ? totals.totalSpend / totals.totalEnrolments : null;
+
+    const totalRow: ReportRow = {
+      campaign: 'Total',
+      client_name: '',
+      account_handled_by: '',
+      tracking_id: '',
+      google_campaign_id: '',
+      date: '',
+      ads_start_date: '',
+      hidden_open: '',
+      course_stream: '',
+      budget_inr: '',
+      impressions: '',
+      clicks: '',
+      ctr: '',
+      avg_cpc: '',
+      primary_leads: String(totals.leads),
+      daily_cost_inr: Number(totals.dailyCost.toFixed(2)),
+      cpl: cpl != null ? cpl.toFixed(2) : '',
+      click_to_lead: '',
+      panel: '',
+      client_non_client: '',
+      exam_brand_generic: '',
+      account_id: '',
+      account_active_suspended: '',
+      days_campaign_running: '',
+      monthly_cost: Number(totals.monthlyCost.toFixed(2)),
+      month_leads: String(totals.monthLeads),
+      monthly_cpl: monthlyCpl != null ? monthlyCpl.toFixed(2) : '',
+      month_applications: String(totals.monthApps),
+      monthly_cpa: monthlyCpa != null ? monthlyCpa.toFixed(2) : '',
+      total_spend: Number(totals.totalSpend.toFixed(2)),
+      total_leads: String(totals.totalLeads),
+      total_cpl: totalCpl != null ? totalCpl.toFixed(2) : '',
+      total_apps: String(totals.totalApps),
+      total_cpa: totalCpa != null ? totalCpa.toFixed(2) : '',
+      overall_enrolments: String(totals.totalEnrolments),
+      total_cps: totalCps != null ? totalCps.toFixed(2) : '',
+      platform: '',
+      zone: '',
+      team: '',
+      cluster: '',
+      masked_unmasked: '',
+      bid_strategy_type: '',
+      client_type: '',
+      billing: '',
+      landing_page_link: '',
+    };
+
+    return [totalRow, ...rows];
+  }
+
   private async buildExcel(
     rows: ReportRow[],
     metricsDateIst: string,
   ): Promise<{ buffer: Buffer; columnsData: { key: string; label: string }[]; rowsData: ReportRow[] }> {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Google Ads Report', {
-      views: [{ state: 'frozen', ySplit: 2, xSplit: 0 }],
+      views: [{ state: 'frozen', ySplit: 3, xSplit: 0 }],
     });
 
     const rawColumns: { header: string; key: keyof ReportRow; width: number }[] = [
+      { header: 'Platform', key: 'platform', width: 12 },
+      { header: 'Zone', key: 'zone', width: 14 },
+      { header: 'Tracking Id', key: 'tracking_id', width: 14 },
       { header: 'Campaign', key: 'campaign', width: 36 },
-      { header: 'Google Campaign ID', key: 'google_campaign_id', width: 20 },
-      { header: 'Date', key: 'date', width: 12 },
+      { header: 'Client Name', key: 'client_name', width: 26 },
+      { header: 'Account Handled By', key: 'account_handled_by', width: 22 },
+      { header: 'Primary Leads', key: 'primary_leads', width: 14 },
+      { header: 'Daily Cost (₹)', key: 'daily_cost_inr', width: 14 },
+      { header: 'CPL', key: 'cpl', width: 10 },
+      { header: 'Monthly Cost', key: 'monthly_cost', width: 14 },
+      { header: 'Monthly leads', key: 'month_leads', width: 12 },
+      { header: 'Monthly CPL', key: 'monthly_cpl', width: 12 },
+      { header: 'Month Applications', key: 'month_applications', width: 18 },
+      { header: 'Monthly CPA', key: 'monthly_cpa', width: 12 },
+      { header: 'Total Spend', key: 'total_spend', width: 14 },
+      { header: 'Total Leads', key: 'total_leads', width: 12 },
+      { header: 'Total CPL', key: 'total_cpl', width: 12 },
+      { header: 'Total Applications', key: 'total_apps', width: 18 },
+      { header: 'Total CPA', key: 'total_cpa', width: 12 },
+      { header: 'Total CPS', key: 'total_cps', width: 12 },
+      { header: 'Overall Enrolments', key: 'overall_enrolments', width: 30 },
       { header: 'Ads Start Date', key: 'ads_start_date', width: 14 },
-      { header: 'Course/Stream', key: 'course_stream', width: 18 },
       { header: 'Budget (INR)', key: 'budget_inr', width: 14 },
       { header: 'Impressions', key: 'impressions', width: 14 },
       { header: 'Clicks', key: 'clicks', width: 10 },
       { header: 'CTR (%)', key: 'ctr', width: 10 },
       { header: 'Avg. CPC', key: 'avg_cpc', width: 12 },
-      { header: 'Primary Leads', key: 'primary_leads', width: 14 },
-      { header: 'Daily Cost (₹)', key: 'daily_cost_inr', width: 14 },
-      { header: 'CPL', key: 'cpl', width: 10 },
-      { header: 'Click to Lead (%)', key: 'click_to_lead', width: 14 },
       { header: 'Panel', key: 'panel', width: 12 },
       { header: 'Exam/Brand/Generic', key: 'exam_brand_generic', width: 18 },
       { header: 'Account Id', key: 'account_id', width: 14 },
       { header: 'Account Active / Suspended', key: 'account_active_suspended', width: 22 },
       { header: 'No.of Days Campaign Running', key: 'days_campaign_running', width: 22 },
-      { header: 'Monthly Cost', key: 'monthly_cost', width: 14 },
-      { header: 'month Leads', key: 'month_leads', width: 12 },
-      { header: 'Monthly CPL', key: 'monthly_cpl', width: 12 },
-      { header: 'month Applications', key: 'month_applications', width: 32 },
-      { header: 'monthly CPA', key: 'monthly_cpa', width: 12 },
-      { header: 'Total Spend', key: 'total_spend', width: 14 },
-      { header: 'Total Leads', key: 'total_leads', width: 12 },
-      { header: 'Total CPL', key: 'total_cpl', width: 12 },
-      { header: 'total Apps', key: 'total_apps', width: 12 },
-      { header: 'Total CPA', key: 'total_cpa', width: 12 },
-      { header: 'Overall Enrolments', key: 'overall_enrolments', width: 30 },
-      { header: 'Total CPS', key: 'total_cps', width: 12 },
-      { header: 'Platform', key: 'platform', width: 10 },
-      { header: 'Zone', key: 'zone', width: 14 },
       { header: 'Masked/Unmasked', key: 'masked_unmasked', width: 16 },
       { header: 'Bid strategy type', key: 'bid_strategy_type', width: 18 },
       { header: 'Client Type', key: 'client_type', width: 14 },
@@ -558,7 +752,38 @@ export class GoogleAdsReportService {
     ws.mergeCells(1, 1, 1, rawColumns.length);
     ws.getRow(1).font = { italic: true, size: 11 };
 
-    const headerRowNumber = 2;
+    const groupHeaderRowNumber = 2;
+    const groupHeaderRow = ws.getRow(groupHeaderRowNumber);
+    groupHeaderRow.height = 22;
+
+    const mergeHeaderGroup = (
+      fromCol: number,
+      toCol: number,
+      label: string,
+      fillArgb: string,
+      textArgb = 'FF111827',
+    ) => {
+      ws.mergeCells(groupHeaderRowNumber, fromCol, groupHeaderRowNumber, toCol);
+      const cell = groupHeaderRow.getCell(fromCol);
+      cell.value = label;
+      cell.font = { bold: true, color: { argb: textArgb }, size: 10 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillArgb } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF6B7280' } },
+        bottom: { style: 'thin', color: { argb: 'FF6B7280' } },
+        left: { style: 'thin', color: { argb: 'FF6B7280' } },
+        right: { style: 'thin', color: { argb: 'FF6B7280' } },
+      };
+    };
+
+    mergeHeaderGroup(1, 6, 'Campaign Details', 'FFE5E7EB');
+    mergeHeaderGroup(7, 9, 'Daily Matrix', 'FFFDE68A');
+    mergeHeaderGroup(10, 14, 'Montly Matrix', 'FFC7D2FE');
+    mergeHeaderGroup(15, 21, 'Overall Matrix', 'FFF9A8D4');
+    mergeHeaderGroup(22, rawColumns.length, 'Other Meta Details', 'FFD1FAE5');
+
+    const headerRowNumber = 3;
     const headerRow = ws.getRow(headerRowNumber);
     headerRow.height = 36;
     rawColumns.forEach((colDef, idx) => {
@@ -569,7 +794,7 @@ export class GoogleAdsReportService {
       cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
     });
 
-    const dataStart = 3;
+    const dataStart = 4;
     rows.forEach((row, idx) => {
       const r = ws.getRow(dataStart + idx);
       rawColumns.forEach((col, cIdx) => {

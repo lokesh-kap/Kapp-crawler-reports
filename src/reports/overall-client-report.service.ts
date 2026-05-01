@@ -47,7 +47,7 @@ export class OverallClientReportService {
       }))
       .filter((c) => this.isCampaignStatusActive(this.resolveCampaignStatusForReport(c)));
     this.logger.log(
-      `📋 Report scope: ${reportClients.length} client(s) with Active campaign status (of ${clients.length} configured).`,
+      `📋 Report scope: ${reportClients.length} client(s) with active DB config and Active LMS campaign status (of ${clients.length} configured).`,
     );
     const leads = await this.fetchLeadTotals(reportDate);
 
@@ -69,14 +69,14 @@ export class OverallClientReportService {
 
       const emailHtml = buildEmailTemplate({
         title: `${zone} Zone - Client Report`,
-        subtitle: 'Daily Performance Summary',
+        subtitle: `Daily Performance Summary | Zone Clients: ${zoneClients.length}`,
         date: reportDate,
-        summaryCards: [
-          { label: 'Zone Clients', value: zoneClients.length },
-        ],
+        summaryCards: [],
+        summaryTable: this.buildZoneWiseSummaryForTemplate(rowsData),
+        mainTableHasTotalRow: true,
         columns: columnsData,
-        rows: rowsData,
-        footerNote: `Report generated for ${zoneClients.length} clients in ${zone} zone. ${reportNote}`
+        rows: this.buildMainTableRowsWithTotal(rowsData, columnsData),
+      footerNote: `Report generated for ${zoneClients.length} clients in ${zone} zone with active DB config and Active LMS campaign status. ${reportNote}`
       });
 
       // Normalize zone name for env variables (e.g. "North Zone" -> "NORTH_ZONE")
@@ -98,10 +98,10 @@ export class OverallClientReportService {
         cc: ccList.length > 0 ? ccList : undefined,
         subject: `📊 ${zone} Zone Client Report — ${reportDate}`,
         html: emailHtml,
-        attachments: [{
-          filename: `${zone}_Zone_Report_${reportDate}.xlsx`,
-          content: buffer,
-        }],
+        // attachments: [{
+        //   filename: `${zone}_Zone_Report_${reportDate}.xlsx`,
+        //   content: buffer,
+        // }],
       });
     }
 
@@ -110,14 +110,14 @@ export class OverallClientReportService {
 
     const overallEmailHtml = buildEmailTemplate({
       title: 'Overall Client Report',
-      subtitle: 'Daily Performance Summary',
+      subtitle: `Daily Performance Summary | Total Clients: ${reportClients.length}`,
       date: reportDate,
-      summaryCards: [
-        { label: 'Total Clients', value: reportClients.length },
-      ],
+      summaryCards: [],
+      summaryTable: this.buildZoneSummaryForTemplate(overallRows, reportDateObj),
+      mainTableHasTotalRow: true,
       columns: overallCols,
-      rows: overallRows,
-      footerNote: `Overall report generated for ${reportClients.length} client(s) with Active campaign status. ${reportNote}`
+      rows: this.buildMainTableRowsWithTotal(overallRows, overallCols),
+      footerNote: `Overall report generated for ${reportClients.length} client(s) with active DB config and Active LMS campaign status. ${reportNote}`
     });
 
     const overallToEnv = process.env.REPORT_OVERALL_TO || '';
@@ -136,10 +136,10 @@ export class OverallClientReportService {
       cc: overallCcList.length > 0 ? overallCcList : undefined,
       subject: `📊 Overall Client Report — ${reportDate}`,
       html: overallEmailHtml,
-      attachments: [{
-        filename: `Overall_Client_Report_${reportDate}.xlsx`,
-        content: overallBuffer,
-      }],
+      // attachments: [{
+      //   filename: `Overall_Client_Report_${reportDate}.xlsx`,
+      //   content: overallBuffer,
+      // }],
     });
 
     return { success: true };
@@ -281,31 +281,32 @@ export class OverallClientReportService {
     const m1Name = m1Date.toLocaleString('default', { month: 'short' });
 
     const rawColumns = [
-      { header: 'S.No', key: 'sno', width: 6 },
+      { header: 'S.No', key: 'sno', width: 18 },
       { header: 'No. of Days', key: 'no_of_days', width: 12 },
-      { header: 'Client Name', key: 'client_name', width: 35 },
+      { header: 'Client Name', key: 'client_name', width: 20 },
       { header: 'Campaign Status', key: 'campaign_status', width: 12 },
       { header: 'Deal Type', key: 'deal_type', width: 15 },
+      { header: 'OPS AM', key: 'ops_am', width: 18 },
       { header: 'CRM', key: 'crm', width: 15 },
+      { header: 'Primary Application', key: 'primary_application', width: 20 },
+      { header: 'Yesterday Application Achieved', key: 'yesterday_application', width: 25 },
+      { header: `${m1Name} Application Achieved`, key: 'month_1_app_achieved', width: 25 },
+      { header: 'Yesterday Primary Lead', key: 'yesterday_primary_leads', width: 22 },
+      { header: 'Primary Lead', key: 'total_primary_leads', width: 22 },
+      { header: 'Prim. Verified Leads', key: 'prim_verified_leads', width: 22 },
+      { header: 'Primary Form Initiated', key: 'primary_form_initiated', width: 22 },
+      { header: 'Primary Admission', key: 'primary_admission', width: 20 },
+      { header: 'Yesterday Admission Achieved', key: 'yesterday_admission', width: 25 },
+      { header: `${m1Name} Admission Achieved`, key: 'month_1_adm_achieved', width: 25 },
+      { header: 'Duplicate Lead', key: 'duplicate_lead', width: 20 },
+      { header: 'Duplicate Application', key: 'duplicate_application', width: 22 },
+      { header: 'Duplicate Admission', key: 'duplicate_admission', width: 22 },
       { header: 'Target Lead', key: 'target_lead', width: 15 },
       { header: 'Target Application', key: 'target_application', width: 18 },
       { header: 'Target Admission', key: 'target_admission', width: 18 },
       { header: 'Sales TL', key: 'sales_tl', width: 22 },
       { header: 'OPS TL', key: 'ops_tl', width: 22 },
       { header: 'State', key: 'state', width: 20 },
-      { header: 'Yesterday Primary Lead', key: 'yesterday_primary_leads', width: 22 },
-      { header: 'Primary Form Initiated', key: 'primary_form_initiated', width: 22 },
-      { header: 'Prim. Verified Leads', key: 'prim_verified_leads', width: 22 },
-      { header: 'Primary Lead', key: 'total_primary_leads', width: 22 },
-      { header: `${m1Name} Admission Achieved`, key: 'month_1_adm_achieved', width: 25 },
-      { header: 'Yesterday Admission Achieved', key: 'yesterday_admission', width: 25 },
-      { header: 'Primary Admission', key: 'primary_admission', width: 20 },
-      { header: `${m1Name} Application Achieved`, key: 'month_1_app_achieved', width: 25 },
-      { header: 'Yesterday Application Achieved', key: 'yesterday_application', width: 25 },
-      { header: 'Primary Application', key: 'primary_application', width: 20 },
-      { header: 'Duplicate Lead', key: 'duplicate_lead', width: 20 },
-      { header: 'Duplicate Application', key: 'duplicate_application', width: 22 },
-      { header: 'Duplicate Admission', key: 'duplicate_admission', width: 22 },
     ];
 
     ws.columns = rawColumns;
@@ -313,12 +314,6 @@ export class OverallClientReportService {
     // Map Excel columns to the Email Template format { key, label }
     const columnsData = rawColumns.map(c => ({ key: c.key, label: c.header }));
 
-    ws.getRow(1).height = 36;
-    ws.getRow(1).eachCell(cell => {
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
-      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-    });
 
     // ---------------------------------------------------------------------
     // LOAD HISTORICAL M1 DATA FROM CSV (Specifically for March data)
@@ -381,30 +376,211 @@ export class OverallClientReportService {
         client_name: this.normalizeLmsValue(c.client_name),
         campaign_status: this.normalizeLmsValue(c.campaign_status ?? c.status),
         deal_type: this.normalizeLmsValue(c.deal_type),
+        ops_am: this.normalizeLmsValue(c.ops_am),
         crm: this.normalizeLmsValue(c.crm),
+        primary_application: m.primary_application ?? '',
+        yesterday_application: m.yesterday_application ?? '',
+        month_1_app_achieved: historicalM1Apps ?? '',
+        yesterday_primary_leads: m.yesterday_primary_leads ?? '',
+        total_primary_leads: m.total_primary_leads ?? '',
+        prim_verified_leads: m.prim_verified_leads ?? '',
+        primary_form_initiated: m.primary_form_initiated ?? '',
+        primary_admission: m.primary_admission ?? '',
+        yesterday_admission: m.yesterday_admission ?? '',
+        month_1_adm_achieved: historicalM1Adms ?? '',
+        duplicate_lead: m.duplicate_lead ?? '',
+        duplicate_application: m.duplicate_application ?? '',
+        duplicate_admission: m.duplicate_admission ?? '',
         target_lead: this.normalizeLmsValue(c.target_lead),
         target_application: this.normalizeLmsValue(c.target_application),
         target_admission: this.normalizeLmsValue(c.target_admission),
         sales_tl: this.normalizeLmsValue(c.sales_tl),
         ops_tl: this.normalizeLmsValue(c.ops_tl),
         state: this.normalizeLmsValue(c.client_state),
-        yesterday_primary_leads: m.yesterday_primary_leads ?? '',
-        primary_form_initiated: m.primary_form_initiated ?? '',
-        prim_verified_leads: m.prim_verified_leads ?? '',
-        total_primary_leads: m.total_primary_leads ?? '',
-        month_1_adm_achieved: historicalM1Adms ?? '',
-        month_1_app_achieved: historicalM1Apps ?? '',
-        yesterday_admission: m.yesterday_admission ?? '',
-        primary_admission: m.primary_admission ?? '',
-        yesterday_application: m.yesterday_application ?? '',
-        primary_application: m.primary_application ?? '',
-        duplicate_lead: m.duplicate_lead ?? '',
-        duplicate_application: m.duplicate_application ?? '',
-        duplicate_admission: m.duplicate_admission ?? '',
+        zone: this.normalizeLmsValue(c.effective_account_zone ?? c.account_zone),
       };
 
       ws.addRow(rowData);
       rowsData.push(rowData);
+    });
+
+    const numericTotalKeys = new Set([
+      'primary_application',
+      'yesterday_application',
+      'month_1_app_achieved',
+      'yesterday_primary_leads',
+      'total_primary_leads',
+      'prim_verified_leads',
+      'primary_form_initiated',
+      'primary_admission',
+      'yesterday_admission',
+      'month_1_adm_achieved',
+      'duplicate_lead',
+      'duplicate_application',
+      'duplicate_admission',
+      'target_lead',
+      'target_application',
+      'target_admission',
+    ]);
+    const parseNum = (v: unknown): number => {
+      if (v === null || v === undefined || v === '') return 0;
+      const n = Number(String(v).replace(/,/g, '').trim());
+      return Number.isFinite(n) ? n : 0;
+    };
+    const totalRowData: Record<string, number | string> = {};
+    for (const col of rawColumns) {
+      if (numericTotalKeys.has(col.key)) {
+        totalRowData[col.key] = rowsData.reduce((acc, row) => acc + parseNum(row[col.key]), 0);
+      } else {
+        totalRowData[col.key] = '';
+      }
+    }
+    const summaryColumns = [
+      { header: 'Operation Manager', key: 'ops_am' },
+      { header: 'Zone', key: 'zone' },
+      { header: 'Accounts', key: 'accounts' },
+      { header: 'Zero App Accounts', key: 'zero_app_accounts' },
+      { header: 'Primary Application', key: 'primary_application' },
+      { header: 'Yesterday Application Achieved', key: 'yesterday_application' },
+      { header: `${m1Name} Application Achieved`, key: 'month_1_app_achieved' },
+      { header: 'Yesterday Primary Leads', key: 'yesterday_primary_leads' },
+      { header: 'Primary Lead', key: 'total_primary_leads' },
+      { header: 'Primary Verified Lead', key: 'prim_verified_leads' },
+      { header: 'Primary Form Initiated', key: 'primary_form_initiated' },
+      { header: 'Primary Admission', key: 'primary_admission' },
+      { header: 'Yesterday Admission Achieved', key: 'yesterday_admission' },
+      { header: `${m1Name} Admission Achieved`, key: 'month_1_adm_achieved' },
+      { header: 'Duplicate Lead', key: 'duplicate_lead' },
+      { header: 'Duplicate Application', key: 'duplicate_application' },
+      { header: 'Duplicate Admission', key: 'duplicate_admission' },
+      { header: 'Target Lead', key: 'target_lead' },
+      { header: 'Target Application', key: 'target_application' },
+      { header: 'Target Admission', key: 'target_admission' },
+    ];
+    const staticOpsByZone: Record<string, string> = {
+      west: 'Govind Mahara',
+      east: 'Dinesh Singh',
+      north: 'Dinesh Singh',
+      south: 'Govind Mahara',
+    };
+    const summaryMap = new Map<string, Record<string, string | number>>();
+    for (const row of rowsData) {
+      const zone = String(row.zone ?? '').trim() || 'N/A';
+      const opsAm = staticOpsByZone[zone.toLowerCase()] || 'N/A';
+      const k = `${opsAm}__${zone}`;
+      if (!summaryMap.has(k)) {
+        summaryMap.set(k, {
+          ops_am: opsAm,
+          zone,
+          accounts: 0,
+          zero_app_accounts: 0,
+          primary_application: 0,
+          yesterday_application: 0,
+          month_1_app_achieved: 0,
+          yesterday_primary_leads: 0,
+          total_primary_leads: 0,
+          prim_verified_leads: 0,
+          primary_form_initiated: 0,
+          primary_admission: 0,
+          yesterday_admission: 0,
+          month_1_adm_achieved: 0,
+          duplicate_lead: 0,
+          duplicate_application: 0,
+          duplicate_admission: 0,
+          target_lead: 0,
+          target_application: 0,
+          target_admission: 0,
+        });
+      }
+      const g = summaryMap.get(k)!;
+      g.accounts = Number(g.accounts) + 1;
+      const app = parseNum(row.primary_application);
+      if (app === 0) g.zero_app_accounts = Number(g.zero_app_accounts) + 1;
+      g.primary_application = Number(g.primary_application) + app;
+      g.yesterday_application = Number(g.yesterday_application) + parseNum(row.yesterday_application);
+      g.month_1_app_achieved = Number(g.month_1_app_achieved) + parseNum(row.month_1_app_achieved);
+      g.yesterday_primary_leads = Number(g.yesterday_primary_leads) + parseNum(row.yesterday_primary_leads);
+      g.total_primary_leads = Number(g.total_primary_leads) + parseNum(row.total_primary_leads);
+      g.prim_verified_leads = Number(g.prim_verified_leads) + parseNum(row.prim_verified_leads);
+      g.primary_form_initiated = Number(g.primary_form_initiated) + parseNum(row.primary_form_initiated);
+      g.primary_admission = Number(g.primary_admission) + parseNum(row.primary_admission);
+      g.yesterday_admission = Number(g.yesterday_admission) + parseNum(row.yesterday_admission);
+      g.month_1_adm_achieved = Number(g.month_1_adm_achieved) + parseNum(row.month_1_adm_achieved);
+      g.duplicate_lead = Number(g.duplicate_lead) + parseNum(row.duplicate_lead);
+      g.duplicate_application = Number(g.duplicate_application) + parseNum(row.duplicate_application);
+      g.duplicate_admission = Number(g.duplicate_admission) + parseNum(row.duplicate_admission);
+      g.target_lead = Number(g.target_lead) + parseNum(row.target_lead);
+      g.target_application = Number(g.target_application) + parseNum(row.target_application);
+      g.target_admission = Number(g.target_admission) + parseNum(row.target_admission);
+    }
+    const summaryRows = Array.from(summaryMap.values()).sort((a, b) => {
+      const x = String(a.ops_am).localeCompare(String(b.ops_am));
+      return x !== 0 ? x : String(a.zone).localeCompare(String(b.zone));
+    });
+    const summaryTotals: Record<string, string | number> = { ops_am: '', zone: 'Total' };
+    for (const col of summaryColumns.slice(2)) {
+      summaryTotals[col.key] = summaryRows.reduce((acc, r) => acc + Number(r[col.key] ?? 0), 0);
+    }
+    const summaryBlockRows = 2 + summaryRows.length + 1;
+    for (let i = 0; i < summaryBlockRows; i += 1) {
+      ws.insertRow(1, {});
+    }
+    const writeSummaryRow = (rowNumber: number, rowData: Record<string, string | number>) => {
+      summaryColumns.forEach((col, idx) => {
+        ws.getCell(rowNumber, idx + 1).value = rowData[col.key] ?? '';
+      });
+    };
+    writeSummaryRow(1, summaryTotals);
+    summaryColumns.forEach((col, idx) => {
+      ws.getCell(2, idx + 1).value = col.header;
+    });
+    summaryRows.forEach((sr, idx) => writeSummaryRow(3 + idx, sr));
+
+    ws.getRow(1).height = 28;
+    ws.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2F3841' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+    ws.getRow(2).height = 32;
+    ws.getRow(2).eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FF111827' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFBFDFAF' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF000000' } },
+        left: { style: 'thin', color: { argb: 'FF000000' } },
+        bottom: { style: 'thin', color: { argb: 'FF000000' } },
+        right: { style: 'thin', color: { argb: 'FF000000' } },
+      };
+    });
+
+    const mainTotalRow = summaryBlockRows + 1;
+    ws.insertRow(mainTotalRow, totalRowData);
+
+    ws.getRow(mainTotalRow).height = 30;
+    ws.getRow(mainTotalRow).eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2F3841' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF2F3841' } },
+        left: { style: 'thin', color: { argb: 'FF2F3841' } },
+        bottom: { style: 'thin', color: { argb: 'FF2F3841' } },
+        right: { style: 'thin', color: { argb: 'FF2F3841' } },
+      };
+    });
+    ws.getRow(mainTotalRow + 1).height = 34;
+    ws.getRow(mainTotalRow + 1).eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FF111827' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF7F5F1' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFD1C7B8' } },
+        left: { style: 'thin', color: { argb: 'FFD1C7B8' } },
+        bottom: { style: 'thin', color: { argb: 'FFD1C7B8' } },
+        right: { style: 'thin', color: { argb: 'FFD1C7B8' } },
+      };
     });
 
     const buffer = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
@@ -458,6 +634,205 @@ export class OverallClientReportService {
   private getReportDateObject(reportDate: string): Date {
     const [year, month, day] = reportDate.split('-').map(Number);
     return new Date(year, month - 1, day);
+  }
+
+  private buildZoneSummaryForTemplate(rowsData: any[], reportDate: Date): {
+    title: string;
+    columns: Array<{ key: string; label: string; align?: 'left' | 'center' | 'right' }>;
+    rows: Record<string, any>[];
+  } {
+    const staticOpsByZone: Record<string, string> = {
+      west: 'Govind Mahara',
+      east: 'Dinesh Singh',
+      north: 'Dinesh Singh',
+      south: 'Govind Mahara',
+    };
+    const m1Date = new Date(reportDate);
+    m1Date.setDate(1);
+    m1Date.setMonth(reportDate.getMonth() - 1);
+    const m1Name = m1Date.toLocaleString('default', { month: 'short' });
+    const cols = [
+      { key: 'ops_am', label: 'Operation Manager' },
+      { key: 'zone', label: 'Zone' },
+      { key: 'accounts', label: 'Accounts', align: 'right' as const },
+      { key: 'zero_app_accounts', label: 'Zero App Accounts', align: 'right' as const },
+      { key: 'primary_application', label: 'Primary Application', align: 'right' as const },
+      { key: 'yesterday_application', label: 'Yesterday Application Achieved', align: 'right' as const },
+      { key: 'month_1_app_achieved', label: `${m1Name} Application Achieved`, align: 'right' as const },
+      { key: 'yesterday_primary_leads', label: 'Yesterday Primary Leads', align: 'right' as const },
+      { key: 'total_primary_leads', label: 'Primary Lead', align: 'right' as const },
+      { key: 'prim_verified_leads', label: 'Primary Verified Lead', align: 'right' as const },
+      { key: 'primary_form_initiated', label: 'Primary Form Initiated', align: 'right' as const },
+      { key: 'primary_admission', label: 'Primary Admission', align: 'right' as const },
+      { key: 'yesterday_admission', label: 'Yesterday Admission Achieved', align: 'right' as const },
+      { key: 'month_1_adm_achieved', label: `${m1Name} Admission Achieved`, align: 'right' as const },
+      { key: 'duplicate_lead', label: 'Duplicate Lead', align: 'right' as const },
+      { key: 'duplicate_application', label: 'Duplicate Application', align: 'right' as const },
+      { key: 'duplicate_admission', label: 'Duplicate Admission', align: 'right' as const },
+      { key: 'target_lead', label: 'Target Lead', align: 'right' as const },
+      { key: 'target_application', label: 'Target Application', align: 'right' as const },
+      { key: 'target_admission', label: 'Target Admission', align: 'right' as const },
+    ];
+    const parseNum = (v: unknown): number => {
+      if (v === null || v === undefined || v === '') return 0;
+      const n = Number(String(v).replace(/,/g, '').trim());
+      return Number.isFinite(n) ? n : 0;
+    };
+    const grouped = new Map<string, Record<string, any>>();
+    for (const row of rowsData) {
+      const rawZone = String(row.zone ?? row.effective_account_zone ?? row.account_zone ?? '').trim();
+      const isZoneMissing = !rawZone || rawZone === '-' || /^n\/?a$/i.test(rawZone);
+      const zone = isZoneMissing ? 'Not Available' : rawZone;
+      const opsAm = isZoneMissing ? '-' : (staticOpsByZone[zone.toLowerCase()] || '-');
+      const key = `${opsAm}__${zone}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          ops_am: opsAm,
+          zone,
+          accounts: 0,
+          zero_app_accounts: 0,
+          primary_application: 0,
+          yesterday_application: 0,
+          month_1_app_achieved: 0,
+          yesterday_primary_leads: 0,
+          total_primary_leads: 0,
+          prim_verified_leads: 0,
+          primary_form_initiated: 0,
+          primary_admission: 0,
+          yesterday_admission: 0,
+          month_1_adm_achieved: 0,
+          duplicate_lead: 0,
+          duplicate_application: 0,
+          duplicate_admission: 0,
+          target_lead: 0,
+          target_application: 0,
+          target_admission: 0,
+        });
+      }
+      const g = grouped.get(key)!;
+      g.accounts += 1;
+      const primaryApp = parseNum(row.primary_application);
+      if (primaryApp === 0) g.zero_app_accounts += 1;
+      g.primary_application += primaryApp;
+      g.yesterday_application += parseNum(row.yesterday_application);
+      g.month_1_app_achieved += parseNum(row.month_1_app_achieved);
+      g.yesterday_primary_leads += parseNum(row.yesterday_primary_leads);
+      g.total_primary_leads += parseNum(row.total_primary_leads);
+      g.prim_verified_leads += parseNum(row.prim_verified_leads);
+      g.primary_form_initiated += parseNum(row.primary_form_initiated);
+      g.primary_admission += parseNum(row.primary_admission);
+      g.yesterday_admission += parseNum(row.yesterday_admission);
+      g.month_1_adm_achieved += parseNum(row.month_1_adm_achieved);
+      g.duplicate_lead += parseNum(row.duplicate_lead);
+      g.duplicate_application += parseNum(row.duplicate_application);
+      g.duplicate_admission += parseNum(row.duplicate_admission);
+      g.target_lead += parseNum(row.target_lead);
+      g.target_application += parseNum(row.target_application);
+      g.target_admission += parseNum(row.target_admission);
+    }
+    const rows = Array.from(grouped.values()).sort((a, b) => {
+      const aIsNAZone = String(a.zone) === 'Not Available';
+      const bIsNAZone = String(b.zone) === 'Not Available';
+      if (aIsNAZone !== bIsNAZone) return aIsNAZone ? 1 : -1;
+      const x = String(a.ops_am).localeCompare(String(b.ops_am));
+      return x !== 0 ? x : String(a.zone).localeCompare(String(b.zone));
+    });
+    const total: Record<string, any> = {
+      ops_am: '',
+      zone: 'Total',
+    };
+    cols.slice(2).forEach((c) => {
+      total[c.key] = rows.reduce((acc, r) => acc + Number(r[c.key] ?? 0), 0);
+    });
+    return {
+      title: '',
+      columns: cols,
+      rows: [total, ...rows],
+    };
+  }
+
+  private buildZoneWiseSummaryForTemplate(rowsData: any[]): {
+    title: string;
+    layout?: 'horizontal' | 'vertical';
+    position?: 'beforeHeader' | 'afterHeader';
+    columns: Array<{ key: string; label: string; align?: 'left' | 'center' | 'right' }>;
+    rows: Record<string, any>[];
+  } {
+    const cols = [
+      { key: 'total_accounts', label: 'Total Accounts', align: 'right' as const },
+      { key: 'active_accounts', label: 'Active Accounts', align: 'right' as const },
+      { key: 'yesterday_primary_leads', label: 'Yesterday Primary Leads', align: 'right' as const },
+      { key: 'yesterday_applications', label: 'Yesterday Applications', align: 'right' as const },
+      { key: 'total_applications', label: 'Total Applications', align: 'right' as const },
+    ];
+    const parseNum = (v: unknown): number => {
+      if (v === null || v === undefined || v === '') return 0;
+      const n = Number(String(v).replace(/,/g, '').trim());
+      return Number.isFinite(n) ? n : 0;
+    };
+    const totalAccounts = rowsData.length;
+    const activeAccounts = rowsData.filter(
+      (row) => String(row.campaign_status ?? '').trim().toUpperCase() === 'ACTIVE',
+    ).length;
+    const summary = {
+      total_accounts: totalAccounts,
+      active_accounts: activeAccounts,
+      yesterday_primary_leads: rowsData.reduce(
+        (acc, row) => acc + parseNum(row.yesterday_primary_leads),
+        0,
+      ),
+      yesterday_applications: rowsData.reduce(
+        (acc, row) => acc + parseNum(row.yesterday_application),
+        0,
+      ),
+      total_applications: rowsData.reduce((acc, row) => acc + parseNum(row.primary_application), 0),
+    };
+    return {
+      title: '',
+      layout: 'vertical',
+      position: 'afterHeader',
+      columns: cols,
+      rows: [summary],
+    };
+  }
+
+  private buildMainTableRowsWithTotal(
+    rowsData: Record<string, any>[],
+    columnsData: Array<{ key: string; label: string }>,
+  ): Record<string, any>[] {
+    const parseNum = (v: unknown): number => {
+      if (v === null || v === undefined || v === '') return 0;
+      const n = Number(String(v).replace(/,/g, '').trim());
+      return Number.isFinite(n) ? n : 0;
+    };
+    const total: Record<string, any> = {};
+    columnsData.forEach((c) => {
+      total[c.key] = '';
+    });
+    if (columnsData.some((c) => c.key === 'client_name')) total.client_name = 'Total';
+    const numericKeys = new Set([
+      'primary_application',
+      'yesterday_application',
+      'month_1_app_achieved',
+      'yesterday_primary_leads',
+      'total_primary_leads',
+      'prim_verified_leads',
+      'primary_form_initiated',
+      'primary_admission',
+      'yesterday_admission',
+      'month_1_adm_achieved',
+      'duplicate_lead',
+      'duplicate_application',
+      'duplicate_admission',
+      'target_lead',
+      'target_application',
+      'target_admission',
+    ]);
+    numericKeys.forEach((k) => {
+      if (!columnsData.some((c) => c.key === k)) return;
+      total[k] = rowsData.reduce((acc, row) => acc + parseNum(row[k]), 0);
+    });
+    return [total, ...rowsData];
   }
 
 }
