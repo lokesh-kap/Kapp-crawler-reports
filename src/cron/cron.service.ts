@@ -36,7 +36,7 @@ export class CronService {
     await this.callApi('/scraper/schedule/npf-funnel/run', 'NPF Funnel + Campaign Scrape');
   }
 
-  @Cron('00 11 * * *', { timeZone: 'Asia/Kolkata' })
+  @Cron('15 23 * * *', { timeZone: 'Asia/Kolkata' })
   async reportEmailSchedule() {
     if (!(`${process.env.REPORT_CRON_ENABLED}` === 'true')) return;
     const reportCalls = [

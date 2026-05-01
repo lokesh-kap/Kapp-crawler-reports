@@ -104,12 +104,10 @@ export class GoogleAdsReportService {
 
     const html = buildEmailTemplate({
       title: 'Google Ads Report',
-      subtitle: `Campaign metrics date: ${effectiveMetricsDate || 'N/A'} | Summary data date: ${reportDate}`,
+      subtitle: 'Daily campaign performance snapshot',
       date: reportDate,
       summaryCards: [
         { label: 'Rows', value: reportRows.length },
-        { label: 'Campaign metrics date', value: effectiveMetricsDate || 'N/A' },
-        { label: 'Summary data date', value: reportDate },
       ],
       columns: emailCols,
       rows: emailRows as Record<string, any>[],
@@ -190,6 +188,7 @@ export class GoogleAdsReportService {
          AND am."isActive" = true
          AND am."campaignInfoId" IS NOT NULL
          AND lower(trim(COALESCE(s.medium, ''))) = lower(trim(am."mediumCode"))
+         AND lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
         GROUP BY am."campaignInfoId", (s.created_at AT TIME ZONE 'Asia/Kolkata')::date
       ),
       mapping_client AS (

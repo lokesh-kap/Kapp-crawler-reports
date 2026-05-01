@@ -1447,15 +1447,17 @@ export class ScrapperService implements OnModuleInit {
         payload: Record<string, unknown>;
       } | null;
     } = { requestTemplate: null };
+    let activeCampaignFilter = 'None';
     const appendCampaignRows = (
       list: Array<Record<string, unknown>>,
       pageNo: number,
+      filterApplied: string,
     ) => {
       for (const item of list) {
         const source = String(item.source ?? '').trim();
         const medium = String(item.medium ?? '').trim();
         const campaignName = String(item.name ?? '').trim();
-        const rowKey = `${pageNo}|${source}|${medium}|${campaignName}`;
+        const rowKey = `${filterApplied}|${pageNo}|${source}|${medium}|${campaignName}`;
         if (seenCampaigns.has(rowKey)) continue;
         seenCampaigns.add(rowKey);
         apiRows.push({
@@ -1472,6 +1474,7 @@ export class ScrapperService implements OnModuleInit {
           payment_approved: this.normalizeNpfMetricValue(item.payment_approved),
           enrolments: this.normalizeNpfMetricValue(item.enrolment_count),
           data_source: 'npf_campaign_api',
+          filter_applied: filterApplied,
         });
       }
     };
@@ -1559,7 +1562,7 @@ export class ScrapperService implements OnModuleInit {
           }
           const pageNo = Number(data.page ?? 0);
           firstApiPage = pageNo;
-          appendCampaignRows(list, pageNo);
+          appendCampaignRows(list, pageNo, activeCampaignFilter);
           apiSeq += 1;
           this.logger.log(
             `Captured campaign API response (seq=${apiSeq}, page=${pageNo}, rows=${list.length}, unique_total=${apiRows.length})`,
@@ -1586,6 +1589,9 @@ export class ScrapperService implements OnModuleInit {
 
       // Apply summary config steps (institute/source/etc.) before Search.
       const summaryFilters = [...(summaryConfig.filters ?? [])];
+      const instanceFilterValue =
+        summaryFilters.find((f) => String(f?.name ?? '').trim().toLowerCase() === 'instance')
+          ?.value_to_apply || 'Instance';
       if (summaryFilters.length > 0) {
         this.logger.log(
           `Applying summary config filters before campaign API fetch: count=${summaryFilters.length}`,
@@ -1602,179 +1608,189 @@ export class ScrapperService implements OnModuleInit {
         );
       }
 
-      // Trigger Search once, then collect paginated API calls.
-      const searchBtn = page
-        .locator("//button[contains(., 'Search')] | //a[contains(., 'Search')]")
-        .first();
-      if (await searchBtn.isVisible().catch(() => false)) {
-        await searchBtn.click({ force: true }).catch(() => null);
-      }
-
-      // Wait for first API response.
-      const firstSeq = apiSeq;
-      const waitStart = Date.now();
-      while (Date.now() - waitStart < 12000 && apiSeq <= firstSeq) {
-        await page.waitForTimeout(400);
-      }
-
-      // After first Search response, force rows-per-page as high as possible.
-      // Prefer requested limit (3000), and inject the option when UI only has 10/20/50/100.
-      const beforeRppSeq = apiSeq;
-      const rppResult = await this.setNpfCampaignRowsPerPage(page, apiPageLimit);
-      if (rppResult.applied) {
-        await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 15000 }).catch(() => null);
-        await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
-        const started = Date.now();
-        while (Date.now() - started < 8000 && apiSeq <= beforeRppSeq) {
-          await page.waitForTimeout(300);
-        }
-        this.logger.log(
-          `Campaign rows-per-page applied: selected=${rppResult.selected ?? 'unknown'} (requested=${apiPageLimit}, injected=${rppResult.injected})`,
-        );
-      } else {
-        this.logger.warn('Campaign rows-per-page selector not found; continuing with default page size.');
-      }
-
-      if (sawNonJsonCampaignPayload) {
-        this.logger.warn(
-          'Campaign API payload is non-JSON; could not force limit=3000. Falling back to UI pagination.',
-        );
-      } else if (rewroteCampaignPayload) {
-        this.logger.log(`Campaign API pagination limit forced to ${apiPageLimit} rows/request.`);
-      }
-
-      // API-first pagination: if total > first page, call remaining pages directly
-      // via authenticated request context (does not depend on UI Next visibility).
-      if (
-        campaignApiState.requestTemplate &&
-        apiTotal > 0 &&
-        apiRows.length < apiTotal
-      ) {
-        const template = campaignApiState.requestTemplate;
-        const expectedPages = Math.max(1, Math.ceil(apiTotal / apiPageLimit));
-        const pageKey =
-          ['page', 'pageNo', 'page_no', 'page_number'].find((k) =>
-            Object.prototype.hasOwnProperty.call(template.payload, k),
-          ) ?? 'page';
-        const limitKey =
-          ['limit', 'pageSize', 'page_size', 'per_page', 'perPage', 'size', 'rows'].find((k) =>
-            Object.prototype.hasOwnProperty.call(template.payload, k),
-          ) ?? 'limit';
-        const requestHeaders = Object.entries(template.headers).reduce(
-          (acc, [k, v]) => {
-            const key = String(k).toLowerCase();
-            if (
-              key === 'content-type' ||
-              key === 'authorization' ||
-              key.startsWith('x-') ||
-              key === 'accept' ||
-              key === 'origin' ||
-              key === 'referer'
-            ) {
-              acc[k] = String(v);
-            }
-            return acc;
-          },
-          {} as Record<string, string>,
-        );
-        if (!requestHeaders['content-type']) {
-          requestHeaders['content-type'] = 'application/json;charset=UTF-8';
-        }
-
-        const pagesToFetch = Array.from({ length: expectedPages }, (_, idx) => idx).filter(
-          (p) => p !== firstApiPage,
-        );
-        for (const p of pagesToFetch) {
-          if (apiRows.length >= apiTotal) break;
-          const payload = { ...template.payload };
-          payload[limitKey] = apiPageLimit;
-          payload[pageKey] = p;
-          const apiResponse = await page.context().request
-            .post(template.url, {
-              headers: requestHeaders,
-              data: payload,
-            })
-            .catch(() => null);
-          if (!apiResponse || !apiResponse.ok()) {
-            this.logger.warn(`Direct API page fetch failed for page=${p}`);
+      const filterPasses = [
+        { label: 'None', filterValue: null },
+        { label: 'Form Initiated', filterValue: 'Form Initiated' },
+        { label: 'Paid Applications', filterValue: 'Paid Applications' },
+        { label: 'Enrolment Status', filterValue: 'Enrolment Status' },
+      ] as const;
+      let previousFilter: string | null = null;
+      for (const pass of filterPasses) {
+        activeCampaignFilter = pass.label;
+        if (pass.filterValue) {
+          const filterResult = await this.applyNpfFilter(
+            page,
+            pass.filterValue,
+            previousFilter,
+            clientWise.client_id,
+          );
+          if (!filterResult.applied) {
+            this.logger.warn(
+              `[CAMPAIGN API] Skipping "${pass.label}" because filter could not be applied: ${filterResult.message}`,
+            );
             continue;
           }
-          const body = (await apiResponse.json().catch(() => null)) as Record<string, unknown> | null;
-          const data = (body?.data as Record<string, unknown> | undefined) ?? {};
-          const list = Array.isArray(data.list) ? (data.list as Array<Record<string, unknown>>) : [];
-          appendCampaignRows(list, p);
-          this.logger.log(
-            `Direct campaign API page fetched: page=${p}, rows=${list.length}, unique_total=${apiRows.length}`,
-          );
+          previousFilter = pass.filterValue;
         }
-      }
 
-      const nextButtonXpath = this.computeNextButtonXpath(dto);
-      const maxPages = this.getEnvInt('SCRAPER_NPF_CAMPAIGN_MAX_PAGES', 40);
-      for (let pageIndex = 1; pageIndex <= maxPages; pageIndex += 1) {
-        if (apiTotal > 0) {
+        const rowsBeforePass = apiRows.length;
+        const seqBeforePass = apiSeq;
+
+        // Trigger Search, then collect paginated API calls for current filter pass.
+        const searchBtn = page
+          .locator("//button[contains(., 'Search')] | //a[contains(., 'Search')]")
+          .first();
+        if (await searchBtn.isVisible().catch(() => false)) {
+          await searchBtn.click({ force: true }).catch(() => null);
+        }
+
+        // Wait for first API response.
+        const firstSeq = apiSeq;
+        const waitStart = Date.now();
+        while (Date.now() - waitStart < 12000 && apiSeq <= firstSeq) {
+          await page.waitForTimeout(400);
+        }
+
+        // After first Search response, force rows-per-page as high as possible.
+        const beforeRppSeq = apiSeq;
+        const rppResult = await this.setNpfCampaignRowsPerPage(page, apiPageLimit);
+        if (rppResult.applied) {
+          await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 15000 }).catch(() => null);
+          await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+          const started = Date.now();
+          while (Date.now() - started < 8000 && apiSeq <= beforeRppSeq) {
+            await page.waitForTimeout(300);
+          }
+        }
+
+        // API-first pagination with direct authenticated requests.
+        if (
+          campaignApiState.requestTemplate &&
+          apiTotal > 0 &&
+          apiRows.length - rowsBeforePass < apiTotal
+        ) {
+          const template = campaignApiState.requestTemplate;
           const expectedPages = Math.max(1, Math.ceil(apiTotal / apiPageLimit));
-          if (apiSeq >= expectedPages) {
-            this.logger.log(
-              `Campaign API pagination completed: total=${apiTotal}, limit=${apiPageLimit}, pages=${expectedPages}`,
-            );
+          const pageKey =
+            ['page', 'pageNo', 'page_no', 'page_number'].find((k) =>
+              Object.prototype.hasOwnProperty.call(template.payload, k),
+            ) ?? 'page';
+          const limitKey =
+            ['limit', 'pageSize', 'page_size', 'per_page', 'perPage', 'size', 'rows'].find((k) =>
+              Object.prototype.hasOwnProperty.call(template.payload, k),
+            ) ?? 'limit';
+          const requestHeaders = Object.entries(template.headers).reduce(
+            (acc, [k, v]) => {
+              const key = String(k).toLowerCase();
+              if (
+                key === 'content-type' ||
+                key === 'authorization' ||
+                key.startsWith('x-') ||
+                key === 'accept' ||
+                key === 'origin' ||
+                key === 'referer'
+              ) {
+                acc[k] = String(v);
+              }
+              return acc;
+            },
+            {} as Record<string, string>,
+          );
+          if (!requestHeaders['content-type']) {
+            requestHeaders['content-type'] = 'application/json;charset=UTF-8';
+          }
+
+          const pagesToFetch = Array.from({ length: expectedPages }, (_, idx) => idx).filter(
+            (p) => p !== firstApiPage,
+          );
+          for (const p of pagesToFetch) {
+            if (apiRows.length - rowsBeforePass >= apiTotal) break;
+            const payload = { ...template.payload };
+            payload[limitKey] = apiPageLimit;
+            payload[pageKey] = p;
+            const apiResponse = await page.context().request
+              .post(template.url, {
+                headers: requestHeaders,
+                data: payload,
+              })
+              .catch(() => null);
+            if (!apiResponse || !apiResponse.ok()) {
+              this.logger.warn(`Direct API page fetch failed for page=${p} (${pass.label})`);
+              continue;
+            }
+            const body = (await apiResponse.json().catch(() => null)) as Record<string, unknown> | null;
+            const data = (body?.data as Record<string, unknown> | undefined) ?? {};
+            const list = Array.isArray(data.list) ? (data.list as Array<Record<string, unknown>>) : [];
+            appendCampaignRows(list, p, activeCampaignFilter);
+          }
+        }
+
+        const nextButtonXpath = this.computeNextButtonXpath(dto);
+        const maxPages = this.getEnvInt('SCRAPER_NPF_CAMPAIGN_MAX_PAGES', 40);
+        for (let pageIndex = 1; pageIndex <= maxPages; pageIndex += 1) {
+          if (apiTotal > 0) {
+            const expectedPages = Math.max(1, Math.ceil(apiTotal / apiPageLimit));
+            if (apiSeq - seqBeforePass >= expectedPages) {
+              break;
+            }
+          }
+
+          const pagerStatus = await page
+            .locator('ul.pagination li.pt-1')
+            .first()
+            .textContent()
+            .catch(() => null);
+          if (pagerStatus) {
+            const m = pagerStatus.replace(/\s+/g, ' ').match(/(\d+)\s*-\s*(\d+)\s*of\s*(\d+)/i);
+            if (m) {
+              const end = Number(m[2]);
+              const total = Number(m[3]);
+              if (Number.isFinite(end) && Number.isFinite(total) && end >= total) {
+                break;
+              }
+            }
+          }
+
+          const nextBtn = page
+            .locator("ul.pagination li.page-item:not(.disabled) a.page-link:has(i.fa-angle-right)")
+            .first();
+          const nextBtnFallback = page.locator(`xpath=${nextButtonXpath}`).first();
+          const isVisible = await nextBtn.isVisible().catch(() => false);
+          const targetNextBtn = isVisible ? nextBtn : nextBtnFallback;
+          const targetVisible = isVisible || (await nextBtnFallback.isVisible().catch(() => false));
+          if (!targetVisible) break;
+          const isDisabled = await targetNextBtn
+            .evaluate((el) => {
+              const h = el as HTMLElement;
+              const ariaDisabled = h.getAttribute('aria-disabled');
+              const cls = h.className || '';
+              return (
+                (h as HTMLButtonElement).disabled === true ||
+                ariaDisabled === 'true' ||
+                /\bdisabled\b/i.test(cls)
+              );
+            })
+            .catch(() => false);
+          if (isDisabled) break;
+
+          const beforeSeq = apiSeq;
+          const clicked = await targetNextBtn.click({ force: true }).then(() => true).catch(() => false);
+          if (!clicked) break;
+          await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 15000 }).catch(() => null);
+          await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+
+          const started = Date.now();
+          while (Date.now() - started < 8000 && apiSeq <= beforeSeq) {
+            await page.waitForTimeout(350);
+          }
+          if (apiSeq <= beforeSeq) {
             break;
           }
         }
 
-        const pagerStatus = await page
-          .locator('ul.pagination li.pt-1')
-          .first()
-          .textContent()
-          .catch(() => null);
-        if (pagerStatus) {
-          const m = pagerStatus.replace(/\s+/g, ' ').match(/(\d+)\s*-\s*(\d+)\s*of\s*(\d+)/i);
-          if (m) {
-            const end = Number(m[2]);
-            const total = Number(m[3]);
-            if (Number.isFinite(end) && Number.isFinite(total) && end >= total) {
-              this.logger.log(`Campaign UI pager reached end (${end}/${total}); stopping pagination.`);
-              break;
-            }
-          }
-        }
-
-        const nextBtn = page
-          .locator("ul.pagination li.page-item:not(.disabled) a.page-link:has(i.fa-angle-right)")
-          .first();
-        const nextBtnFallback = page.locator(`xpath=${nextButtonXpath}`).first();
-        const isVisible = await nextBtn.isVisible().catch(() => false);
-        const targetNextBtn = isVisible ? nextBtn : nextBtnFallback;
-        const targetVisible = isVisible || (await nextBtnFallback.isVisible().catch(() => false));
-        if (!targetVisible) break;
-        const isDisabled = await targetNextBtn
-          .evaluate((el) => {
-            const h = el as HTMLElement;
-            const ariaDisabled = h.getAttribute('aria-disabled');
-            const cls = h.className || '';
-            return (
-              (h as HTMLButtonElement).disabled === true ||
-              ariaDisabled === 'true' ||
-              /\bdisabled\b/i.test(cls)
-            );
-          })
-          .catch(() => false);
-        if (isDisabled) break;
-
-        const beforeSeq = apiSeq;
-        const clicked = await targetNextBtn.click({ force: true }).then(() => true).catch(() => false);
-        if (!clicked) break;
-        await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 15000 }).catch(() => null);
-        await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
-
-        const started = Date.now();
-        while (Date.now() - started < 8000 && apiSeq <= beforeSeq) {
-          await page.waitForTimeout(350);
-        }
-        if (apiSeq <= beforeSeq) {
-          this.logger.warn(`No new campaign API response after Next click; stopping at UI page=${pageIndex}`);
-          break;
-        }
+        this.logger.log(
+          `[CAMPAIGN API] Pass "${pass.label}" captured ${apiRows.length - rowsBeforePass} row(s).`,
+        );
       }
 
       if (!apiRows.length) {
@@ -2784,6 +2800,7 @@ export class ScrapperService implements OnModuleInit {
     e.form_initiated = (normalized['form_initiated'] ?? null) as string;
     e.payment_approved = (normalized['payment_approved'] ?? null) as string;
     e.enrolments = (normalized['enrolments'] ?? null) as string;
+    e.filter_applied = (normalized['filter_applied'] ?? 'None') as string;
 
     return e;
   }

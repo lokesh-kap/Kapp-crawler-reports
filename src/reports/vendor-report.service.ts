@@ -219,6 +219,7 @@ export class VendorReportService {
         )::numeric AS applications
       FROM client_wise_summary_data s
       WHERE (s.created_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date
+        AND lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
       GROUP BY s.client_id, lower(trim(COALESCE(s.medium, '')))
       `,
       [reportDate],

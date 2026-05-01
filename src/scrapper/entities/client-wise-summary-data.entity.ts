@@ -57,6 +57,9 @@ export class ClientWiseSummaryDataEntity {
   @Column({ type: 'text', nullable: true })
   enrolments: string;
 
+  @Column({ type: 'text', nullable: true, default: 'None' })
+  filter_applied: string;
+
   @Column({ type: 'jsonb', nullable: true })
   raw_data: Record<string, unknown>;
 }

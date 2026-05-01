@@ -25,6 +25,10 @@ type SummaryAggregateRow = {
   form_initiated: number;
   primary_applications: number;
   primary_enrolments: number;
+  duplicate_leads: number | null;
+  duplicate_form_initiated: number | null;
+  duplicate_applications: number | null;
+  duplicate_admissions: number | null;
 };
 
 type DatabaseReportRow = {
@@ -40,6 +44,10 @@ type DatabaseReportRow = {
   form_initiated: number | '';
   primary_applications: number | '';
   primary_enrolments: number | '';
+  duplicate_leads: number | '';
+  duplicate_form_initiated: number | '';
+  duplicate_applications: number | '';
+  duplicate_admissions: number | '';
 };
 
 @Injectable()
@@ -282,15 +290,170 @@ export class DatabaseReportService {
       SELECT
         s.client_id::int AS client_id,
         lower(trim(COALESCE(s.medium, '')))::text AS medium_code,
-        SUM(CASE WHEN s.primary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.primary_leads::numeric ELSE 0 END)::numeric AS primary_leads,
-        SUM(CASE WHEN s.secondary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.secondary_leads::numeric ELSE 0 END)::numeric AS secondary_leads,
-        SUM(CASE WHEN s.tertiary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.tertiary_leads::numeric ELSE 0 END)::numeric AS tertiary_leads,
-        SUM(CASE WHEN s.total_instances ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.total_instances::numeric ELSE 0 END)::numeric AS total_instances,
-        SUM(CASE WHEN s.verified_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.verified_leads::numeric ELSE 0 END)::numeric AS verified_leads,
-        SUM(CASE WHEN s.unverified_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.unverified_leads::numeric ELSE 0 END)::numeric AS unverified_leads,
-        SUM(CASE WHEN s.form_initiated ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.form_initiated::numeric ELSE 0 END)::numeric AS form_initiated,
-        SUM(CASE WHEN s.payment_approved ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.payment_approved::numeric ELSE 0 END)::numeric AS primary_applications,
-        SUM(CASE WHEN s.enrolments ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.enrolments::numeric ELSE 0 END)::numeric AS primary_enrolments
+        SUM(
+          CASE
+            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
+              AND s.primary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            THEN s.primary_leads::numeric
+            ELSE 0
+          END
+        )::numeric AS primary_leads,
+        SUM(
+          CASE
+            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
+              AND s.secondary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            THEN s.secondary_leads::numeric
+            ELSE 0
+          END
+        )::numeric AS secondary_leads,
+        SUM(
+          CASE
+            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
+              AND s.tertiary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            THEN s.tertiary_leads::numeric
+            ELSE 0
+          END
+        )::numeric AS tertiary_leads,
+        SUM(
+          CASE
+            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
+              AND s.total_instances ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            THEN s.total_instances::numeric
+            ELSE 0
+          END
+        )::numeric AS total_instances,
+        SUM(
+          CASE
+            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
+              AND s.verified_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            THEN s.verified_leads::numeric
+            ELSE 0
+          END
+        )::numeric AS verified_leads,
+        SUM(
+          CASE
+            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
+              AND s.unverified_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            THEN s.unverified_leads::numeric
+            ELSE 0
+          END
+        )::numeric AS unverified_leads,
+        SUM(
+          CASE
+            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
+              AND s.form_initiated ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            THEN s.form_initiated::numeric
+            ELSE 0
+          END
+        )::numeric AS form_initiated,
+        SUM(
+          CASE
+            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
+              AND s.payment_approved ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            THEN s.payment_approved::numeric
+            ELSE 0
+          END
+        )::numeric AS primary_applications,
+        SUM(
+          CASE
+            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
+              AND s.enrolments ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            THEN s.enrolments::numeric
+            ELSE 0
+          END
+        )::numeric AS primary_enrolments,
+        CASE
+          WHEN COUNT(
+            CASE
+              WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
+                AND (
+                  s.secondary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                  OR s.tertiary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                )
+              THEN 1
+              ELSE NULL
+            END
+          ) > 0
+          THEN SUM(
+            CASE
+              WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
+              THEN
+                (CASE WHEN s.secondary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.secondary_leads::numeric ELSE 0 END) +
+                (CASE WHEN s.tertiary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.tertiary_leads::numeric ELSE 0 END)
+              ELSE 0
+            END
+          )::numeric
+          ELSE NULL
+        END AS duplicate_leads,
+        CASE
+          WHEN COUNT(
+            CASE
+              WHEN lower(trim(COALESCE(s.filter_applied, ''))) = 'form initiated'
+                AND (
+                  s.secondary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                  OR s.tertiary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                )
+              THEN 1
+              ELSE NULL
+            END
+          ) > 0
+          THEN SUM(
+            CASE
+              WHEN lower(trim(COALESCE(s.filter_applied, ''))) = 'form initiated'
+              THEN
+                (CASE WHEN s.secondary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.secondary_leads::numeric ELSE 0 END) +
+                (CASE WHEN s.tertiary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.tertiary_leads::numeric ELSE 0 END)
+              ELSE 0
+            END
+          )::numeric
+          ELSE NULL
+        END AS duplicate_form_initiated,
+        CASE
+          WHEN COUNT(
+            CASE
+              WHEN lower(trim(COALESCE(s.filter_applied, ''))) IN ('paid applications', 'paid application', 'paid apps')
+                AND (
+                  s.secondary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                  OR s.tertiary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                )
+              THEN 1
+              ELSE NULL
+            END
+          ) > 0
+          THEN SUM(
+            CASE
+              WHEN lower(trim(COALESCE(s.filter_applied, ''))) IN ('paid applications', 'paid application', 'paid apps')
+              THEN
+                (CASE WHEN s.secondary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.secondary_leads::numeric ELSE 0 END) +
+                (CASE WHEN s.tertiary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.tertiary_leads::numeric ELSE 0 END)
+              ELSE 0
+            END
+          )::numeric
+          ELSE NULL
+        END AS duplicate_applications,
+        CASE
+          WHEN COUNT(
+            CASE
+              WHEN lower(trim(COALESCE(s.filter_applied, ''))) IN ('enrolment status', 'enrollment status')
+                AND (
+                  s.secondary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                  OR s.tertiary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                )
+              THEN 1
+              ELSE NULL
+            END
+          ) > 0
+          THEN SUM(
+            CASE
+              WHEN lower(trim(COALESCE(s.filter_applied, ''))) IN ('enrolment status', 'enrollment status')
+              THEN
+                (CASE WHEN s.secondary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.secondary_leads::numeric ELSE 0 END) +
+                (CASE WHEN s.tertiary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.tertiary_leads::numeric ELSE 0 END)
+              ELSE 0
+            END
+          )::numeric
+          ELSE NULL
+        END AS duplicate_admissions
       FROM client_wise_summary_data s
       WHERE (s.created_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date
       GROUP BY s.client_id, lower(trim(COALESCE(s.medium, '')))
@@ -309,6 +472,10 @@ export class DatabaseReportService {
       form_initiated: Number(r.form_initiated ?? 0),
       primary_applications: Number(r.primary_applications ?? 0),
       primary_enrolments: Number(r.primary_enrolments ?? 0),
+      duplicate_leads: this.toNullableNumber(r.duplicate_leads),
+      duplicate_form_initiated: this.toNullableNumber(r.duplicate_form_initiated),
+      duplicate_applications: this.toNullableNumber(r.duplicate_applications),
+      duplicate_admissions: this.toNullableNumber(r.duplicate_admissions),
     }));
   }
 
@@ -359,8 +526,18 @@ export class DatabaseReportService {
         form_initiated: data ? data.form_initiated : '',
         primary_applications: data ? data.primary_applications : '',
         primary_enrolments: data ? data.primary_enrolments : '',
+        duplicate_leads: data ? (data.duplicate_leads ?? '') : '',
+        duplicate_form_initiated: data ? (data.duplicate_form_initiated ?? '') : '',
+        duplicate_applications: data ? (data.duplicate_applications ?? '') : '',
+        duplicate_admissions: data ? (data.duplicate_admissions ?? '') : '',
       };
     });
+  }
+
+  private toNullableNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
   }
 
   private async buildExcel(
@@ -382,6 +559,10 @@ export class DatabaseReportService {
       { header: 'Form Initiated', key: 'form_initiated', width: 14 },
       { header: 'Primary Applications', key: 'primary_applications', width: 18 },
       { header: 'Primary Enrolments', key: 'primary_enrolments', width: 16 },
+      { header: 'Duplicate Leads', key: 'duplicate_leads', width: 18 },
+      { header: 'Duplicate Form Initiated', key: 'duplicate_form_initiated', width: 24 },
+      { header: 'Duplicate Application', key: 'duplicate_applications', width: 22 },
+      { header: 'Duplicate Admission', key: 'duplicate_admissions', width: 20 },
     ];
 
     ws.columns = columns.map((c) => ({ key: c.key, width: c.width }));
