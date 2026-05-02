@@ -111,6 +111,27 @@ export class GoogleAdsReportService {
       return slim;
     });
 
+    const parsePrimaryLeadForSort = (v: unknown): number => {
+      if (v === null || v === undefined || v === '') return Number.NEGATIVE_INFINITY;
+      const n = Number(String(v).replace(/,/g, '').trim());
+      return Number.isFinite(n) ? n : Number.NEGATIVE_INFINITY;
+    };
+    const emailRowsSorted: Record<string, unknown>[] = (() => {
+      if (emailRows.length === 0) return emailRows;
+      const [first, ...rest] = emailRows;
+      const isTotalRow =
+        String((first as Record<string, unknown>).campaign ?? '').trim().toLowerCase() === 'total';
+      if (!isTotalRow) {
+        return [...emailRows].sort(
+          (a, b) => parsePrimaryLeadForSort(b.primary_leads) - parsePrimaryLeadForSort(a.primary_leads),
+        );
+      }
+      const sortedRest = [...rest].sort(
+        (a, b) => parsePrimaryLeadForSort(b.primary_leads) - parsePrimaryLeadForSort(a.primary_leads),
+      );
+      return [first, ...sortedRest];
+    })();
+
     const toList = this.parseEmailList(process.env.REPORT_GOOGLE_ADS_TO);
     const ccList = this.parseEmailList(process.env.REPORT_GOOGLE_ADS_CC);
     if (toList.length === 0) {
@@ -132,7 +153,7 @@ export class GoogleAdsReportService {
         { label: 'Other Meta Details', span: 15, bgColor: '#d1fae5', textColor: '#111827' },
       ],
       columns: emailCols,
-      rows: emailRows as Record<string, any>[],
+      rows: emailRowsSorted as Record<string, any>[],
       footerNote:
         'Lead/application attribution is computed live during report generation from lead data + ads mapping. No separate attribution sync is required.',
     });
