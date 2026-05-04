@@ -66,6 +66,8 @@ type ApplyFiltersOptions = {
   clientId?: number;
   throwOnFailure?: boolean;
   contextLabel?: string;
+  /** When set, one reload of this URL per filter item if locator readiness fails (campaign summary view). */
+  reloadSummaryUrl?: string;
 };
 type ApplyFiltersResult = {
   appliedCount: number;
@@ -323,6 +325,51 @@ export class ScrapperService implements OnModuleInit {
           await this.login(page, dto, clientWise);
           await this.ensureNpfLeadViewReady(page, dto, clientWise, leadsConfig.url);
         }
+      }
+    }
+  }
+
+  /** Same settle sequence used after navigating to NPF summary (campaign API) URL. */
+  private async ensureNpfCampaignSummaryPageReady(page: Page, summaryUrl: string): Promise<void> {
+    await page.goto(summaryUrl, { waitUntil: 'load', timeout: 60000 });
+    await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 15000 }).catch(() => null);
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
+    await page.waitForTimeout(1500);
+  }
+
+  private async applyNpfCampaignBaseFiltersWithRecovery(
+    page: Page,
+    summaryFilters: Array<any>,
+    clientId: number,
+    summaryUrl: string,
+  ): Promise<void> {
+    const rawCampaign = process.env.SCRAPER_NPF_CAMPAIGN_FILTER_RELOAD_RETRIES;
+    const maxReloadRetries =
+      rawCampaign !== undefined && String(rawCampaign).trim() !== ''
+        ? this.getEnvInt('SCRAPER_NPF_CAMPAIGN_FILTER_RELOAD_RETRIES', 1)
+        : this.getEnvInt('SCRAPER_NPF_FILTER_RELOAD_RETRIES', 1);
+
+    for (let attempt = 0; attempt <= maxReloadRetries; attempt += 1) {
+      try {
+        await this.applyFilters(page, summaryFilters, {
+          clientId,
+          throwOnFailure: true,
+          contextLabel: `npf_campaign_api_base_filters_attempt_${attempt + 1}`,
+          reloadSummaryUrl: summaryUrl,
+        });
+        return;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Campaign API base filters failed on attempt ${attempt + 1}/${maxReloadRetries + 1} client_id=${clientId}: ${errorMessage}`,
+        );
+        if (attempt >= maxReloadRetries) {
+          throw err;
+        }
+        this.logger.warn(
+          `Reloading NPF summary view and retrying campaign base filters (attempt ${attempt + 2}/${maxReloadRetries + 1}) client_id=${clientId}`,
+        );
+        await this.ensureNpfCampaignSummaryPageReady(page, summaryUrl);
       }
     }
   }
@@ -1582,10 +1629,7 @@ export class ScrapperService implements OnModuleInit {
         this.logger.log(`Skipping login, reusing existing session for ${clientWise.client_id}`);
       }
 
-      await page.goto(summaryConfig.url, { waitUntil: 'load', timeout: 60000 });
-      await page.waitForSelector('.ng-spinner-loader', { state: 'hidden', timeout: 15000 }).catch(() => null);
-      await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => null);
-      await page.waitForTimeout(1500);
+      await this.ensureNpfCampaignSummaryPageReady(page, summaryConfig.url);
 
       // Apply summary config steps (institute/source/etc.) before Search.
       const summaryFilters = [...(summaryConfig.filters ?? [])];
@@ -1596,11 +1640,12 @@ export class ScrapperService implements OnModuleInit {
         this.logger.log(
           `Applying summary config filters before campaign API fetch: count=${summaryFilters.length}`,
         );
-        await this.applyFilters(page, summaryFilters, {
-          clientId: clientWise.client_id,
-          throwOnFailure: true,
-          contextLabel: 'npf_campaign_api_base_filters',
-        });
+        await this.applyNpfCampaignBaseFiltersWithRecovery(
+          page,
+          summaryFilters,
+          clientWise.client_id,
+          summaryConfig.url,
+        );
         await this.waitBetweenStepPhases(page, 'after npf campaign base filters');
       } else {
         this.logger.warn(
@@ -2379,6 +2424,20 @@ export class ScrapperService implements OnModuleInit {
       `Applying filters: total_items=${items.length}` +
         (options.contextLabel ? ` context=${options.contextLabel}` : ''),
     );
+    const isCampaignSummaryFilters = Boolean(options.reloadSummaryUrl);
+    const maxFilterAttempts = isCampaignSummaryFilters
+      ? this.getEnvInt('SCRAPER_NPF_CAMPAIGN_FILTER_MAX_ATTEMPTS', 2)
+      : 3;
+    const locatorReadinessMs = isCampaignSummaryFilters
+      ? this.getEnvInt('SCRAPER_NPF_CAMPAIGN_LOCATOR_WAIT_MS', 6000)
+      : 12000;
+    const campaignFieldFillTimeoutMs = isCampaignSummaryFilters
+      ? this.getEnvInt('SCRAPER_NPF_CAMPAIGN_FIELD_FILL_TIMEOUT_MS', 12000)
+      : 30000;
+    const filterRetryBackoffMs = isCampaignSummaryFilters
+      ? this.getEnvInt('SCRAPER_NPF_CAMPAIGN_FILTER_RETRY_BACKOFF_MS', 600)
+      : 1500;
+
     let appliedCount = 0;
     let failedCount = 0;
     const failedItems: string[] = [];
@@ -2449,14 +2508,15 @@ export class ScrapperService implements OnModuleInit {
         type: formType,
         value: effectiveValueToApply,
         optional: true,
-        timeoutMs: 30000,
+        timeoutMs: campaignFieldFillTimeoutMs,
         ...(secondaryXpath ? { secondaryXpath } : {}),
         ...(dateStrategy ? { dateStrategy } : {}),
       };
 
       let itemApplied = false;
       let lastErr: unknown;
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
+      let locatorStaleReloadedThisItem = false;
+      for (let attempt = 1; attempt <= maxFilterAttempts; attempt += 1) {
         try {
           await this.waitForFixedLoaderToClear(
             page,
@@ -2465,10 +2525,35 @@ export class ScrapperService implements OnModuleInit {
             `${options.contextLabel ?? 'applyFilters'}-item-${idx + 1}-attempt-${attempt}`,
           );
 
-          const waitReady = await this.waitForLocatorToReappear(page, xpath, 12000);
+          const waitReady = await this.waitForLocatorToReappear(page, xpath, locatorReadinessMs);
           this.logger.log(
-            `Filter[${idx + 1}/${items.length}] pre-attempt ${attempt}/3 locator_ready=${waitReady}`,
+            `Filter[${idx + 1}/${items.length}] pre-attempt ${attempt}/${maxFilterAttempts} locator_ready=${waitReady}`,
           );
+
+          if (
+            !waitReady &&
+            options.reloadSummaryUrl &&
+            !locatorStaleReloadedThisItem
+          ) {
+            locatorStaleReloadedThisItem = true;
+            this.logger.warn(
+              `Filter[${idx + 1}/${items.length}] locator not ready; reloading summary page once before retry (name=${itemName})`,
+            );
+            await this.ensureNpfCampaignSummaryPageReady(page, options.reloadSummaryUrl);
+            attempt -= 1;
+            continue;
+          }
+
+          if (!waitReady && options.reloadSummaryUrl && locatorStaleReloadedThisItem) {
+            this.logger.warn(
+              `Filter[${idx + 1}/${items.length}] locator still not ready after summary reload; ` +
+                `failing fast (name=${itemName})`,
+            );
+            lastErr = new BadRequestException(
+              `NPF campaign filter locator not available for "${itemName}" after page reload`,
+            );
+            break;
+          }
 
           const isNpfDropdown = await page
             .locator(`xpath=${xpath}`)
@@ -2550,7 +2635,7 @@ export class ScrapperService implements OnModuleInit {
         } catch (err) {
           lastErr = err;
           this.logger.warn(
-            `Filter[${idx + 1}/${items.length}] apply failed (attempt ${attempt}/3) name=${itemName} xpath=${xpath}`,
+            `Filter[${idx + 1}/${items.length}] apply failed (attempt ${attempt}/${maxFilterAttempts}) name=${itemName} xpath=${xpath}`,
             err instanceof Error ? err.stack : undefined,
           );
 
@@ -2566,7 +2651,7 @@ export class ScrapperService implements OnModuleInit {
               `${options.contextLabel ?? 'applyFilters'}-after-intercept-${idx + 1}`,
             );
           }
-          await page.waitForTimeout(1500);
+          await page.waitForTimeout(filterRetryBackoffMs);
         }
       }
 
