@@ -314,77 +314,77 @@ export class ScrapeSchedulerService {
       : warningCsvFiles[warningCsvFiles.length - 1];
     const filePath = path.join(outDir, latestFile);
     this.logger.log(`Reading warning clients from: ${latestFile}`);
-    
-    const content = await fs.readFile(filePath, 'utf8');
-    const lines = content.split('\n');
-    const retryClientIds = new Set<number>();
-    
-    const retryableStatuses = new Set([
-      'filter_not_found',
-      'metrics_not_found',
-      'dom_fallback_incomplete',
-      'hard_error',
-      'campaign_error',
-      'warning_retry_failed',
-      'warning_retry_second_failed',
-    ]);
+    try {
+      const content = await fs.readFile(filePath, 'utf8');
+      const lines = content.split('\n');
+      const retryClientIds = new Set<number>();
+      
+      const retryableStatuses = new Set([
+        'filter_not_found',
+        'metrics_not_found',
+        'dom_fallback_incomplete',
+        'hard_error',
+        'campaign_error',
+        'warning_retry_failed',
+        'warning_retry_second_failed',
+      ]);
 
-    for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        const parts = line.split(',');
-        if (parts.length > 2) {
-            const status = String(parts[2] ?? '').replace(/"/g, '').trim();
-            if (!retryableStatuses.has(status)) continue;
-            const clientId = parseInt(parts[0].replace(/"/g, ''), 10);
-            if (!isNaN(clientId)) {
-              retryClientIds.add(clientId);
-            }
-        }
-    }
-    
-    if (retryClientIds.size === 0) {
-        this.logger.log('No client IDs to retry found in CSV.');
-        return;
-    }
-    
-    this.logger.log(`Found ${retryClientIds.size} unique client IDs to retry.`);
-    
-    const rows = await this.clientWiseRepository.find({
-        where: {
-            is_active: true,
-            config_id: Not(IsNull()),
-        },
-        order: { id: 'ASC' },
-    });
-    
-    const uniqueRowsMap = new Map<string, ClientWiseEntity>();
-    for (const row of rows) {
-      const key = String(row.client_id);
-      if (uniqueRowsMap.has(key)) continue;
-      uniqueRowsMap.set(key, row);
-    }
-    const dedupedRows = Array.from(uniqueRowsMap.values());
-    const retryRows = dedupedRows.filter((row) => retryClientIds.has(row.client_id));
-    
-    this.logger.log(`Starting retry for ${retryRows.length} clients...`);
-    const progress = {
-      total: retryRows.length,
-      processed: 0,
-      success: 0,
-      failed: 0,
-      skipped: 0,
-    };
-    const retrySuccessList: number[] = [];
-    const retryFailedList: Array<{ client_id: number; error: string }> = [];
-    const logProgress = (label: string, row?: ClientWiseEntity) => {
-      this.logger.log(
-        `📈 NPF retry progress: ${progress.processed}/${progress.total} processed | ` +
-        `success=${progress.success} failed=${progress.failed} skipped=${progress.skipped}` +
-        (row ? ` | client_id=${row.client_id} client_wise_id=${row.id} (${label})` : ` | ${label}`),
-      );
-    };
-    logProgress('run started');
+      for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          const parts = line.split(',');
+          if (parts.length > 2) {
+              const status = String(parts[2] ?? '').replace(/"/g, '').trim();
+              if (!retryableStatuses.has(status)) continue;
+              const clientId = parseInt(parts[0].replace(/"/g, ''), 10);
+              if (!isNaN(clientId)) {
+                retryClientIds.add(clientId);
+              }
+          }
+      }
+      
+      if (retryClientIds.size === 0) {
+          this.logger.log('No client IDs to retry found in CSV.');
+          return;
+      }
+      
+      this.logger.log(`Found ${retryClientIds.size} unique client IDs to retry.`);
+      
+      const rows = await this.clientWiseRepository.find({
+          where: {
+              is_active: true,
+              config_id: Not(IsNull()),
+          },
+          order: { id: 'ASC' },
+      });
+      
+      const uniqueRowsMap = new Map<string, ClientWiseEntity>();
+      for (const row of rows) {
+        const key = String(row.client_id);
+        if (uniqueRowsMap.has(key)) continue;
+        uniqueRowsMap.set(key, row);
+      }
+      const dedupedRows = Array.from(uniqueRowsMap.values());
+      const retryRows = dedupedRows.filter((row) => retryClientIds.has(row.client_id));
+      
+      this.logger.log(`Starting retry for ${retryRows.length} clients...`);
+      const progress = {
+        total: retryRows.length,
+        processed: 0,
+        success: 0,
+        failed: 0,
+        skipped: 0,
+      };
+      const retrySuccessList: number[] = [];
+      const retryFailedList: Array<{ client_id: number; error: string }> = [];
+      const logProgress = (label: string, row?: ClientWiseEntity) => {
+        this.logger.log(
+          `📈 NPF retry progress: ${progress.processed}/${progress.total} processed | ` +
+          `success=${progress.success} failed=${progress.failed} skipped=${progress.skipped}` +
+          (row ? ` | client_id=${row.client_id} client_wise_id=${row.id} (${label})` : ` | ${label}`),
+        );
+      };
+      logProgress('run started');
 
     // Group retry clients by shared NPF login credentials to reuse sessions.
     const groupedRows = new Map<string, ClientWiseEntity[]>();
@@ -486,23 +486,33 @@ export class ScrapeSchedulerService {
       );
     }
 
-    this.logger.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-    this.logger.log(`📊 NPF RETRY RUN SUMMARY`);
-    this.logger.log(
-      `✅ Completed: success=${progress.success} failed=${progress.failed} skipped=${progress.skipped} total=${progress.total}`,
-    );
-    if (retrySuccessList.length > 0) {
-      this.logger.log(`✅ Retry Success Clients: ${retrySuccessList.join(', ')}`);
-    }
-    if (retryFailedList.length > 0) {
-      this.logger.error(`❌ Retry Failed Clients: ${retryFailedList.length}`);
-      retryFailedList.forEach((f) =>
-        this.logger.error(`   - Client ${f.client_id}: ${f.error}`),
+      this.logger.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      this.logger.log(`📊 NPF RETRY RUN SUMMARY`);
+      this.logger.log(
+        `✅ Completed: success=${progress.success} failed=${progress.failed} skipped=${progress.skipped} total=${progress.total}`,
       );
+      if (retrySuccessList.length > 0) {
+        this.logger.log(`✅ Retry Success Clients: ${retrySuccessList.join(', ')}`);
+      }
+      if (retryFailedList.length > 0) {
+        this.logger.error(`❌ Retry Failed Clients: ${retryFailedList.length}`);
+        retryFailedList.forEach((f) =>
+          this.logger.error(`   - Client ${f.client_id}: ${f.error}`),
+        );
+      }
+      this.logger.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+      
+      this.logger.log(`NPF Funnel standalone retry finished.`);
+    } finally {
+      try {
+        await fs.unlink(filePath);
+        this.logger.log(`🗑️ Deleted processed NPF retry CSV: ${latestFile}`);
+      } catch (err) {
+        this.logger.warn(
+          `Could not delete processed NPF retry CSV (${latestFile}): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
-    this.logger.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
-    
-    this.logger.log(`NPF Funnel standalone retry finished.`);
   }
 
   private async getActiveRows(): Promise<ClientWiseEntity[]> {

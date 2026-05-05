@@ -4,7 +4,6 @@ import { Repository } from 'typeorm';
 import * as fs from 'fs';
 import * as path from 'path';
 import axios from 'axios';
-import * as ExcelJS from 'exceljs';
 import { parse } from 'csv-parse/sync';
 import { MailerService } from '../common/mailer/mailer.service';
 import { buildEmailTemplate } from '../common/mailer/email-template';
@@ -107,16 +106,6 @@ export class VendorReportService {
       a.vendorName.localeCompare(b.vendorName),
     );
 
-    const overallLeads = vendorAggList.reduce((acc, v) => acc + v.totalLeads, 0);
-    const overallApplications = vendorAggList.reduce((acc, v) => acc + v.totalApplications, 0);
-
-    const { buffer, emailRows, emailCols } = await this.buildVendorExcel(
-      vendorAggList,
-      reportDate,
-      overallLeads,
-      overallApplications,
-    );
-
     const toList = this.parseEmailList(process.env.REPORT_VENDOR_TO);
     const ccList = this.parseEmailList(process.env.REPORT_VENDOR_CC);
     if (toList.length === 0) {
@@ -124,35 +113,44 @@ export class VendorReportService {
       return { success: true, message: 'Skipped — no recipients.' };
     }
 
-    const html = buildEmailTemplate({
-      title: 'Vendor / Publisher Report',
-      subtitle: `NPF day-wise summary mapped by vendor medium codes (${reportDate})`,
-      date: reportDate,
-      summaryCards: [
-        { label: 'Vendors', value: vendorAggList.length },
-        { label: 'Overall Leads', value: overallLeads },
-        { label: 'Overall Applications', value: overallApplications },
-      ],
-      columns: emailCols,
-      rows: emailRows,
-      footerNote:
-        'Leads = primary_leads, Applications = payment_approved from client_wise_summary_data. Matching uses lowercase medium codes.',
-    });
+    const footerNote =
+      'This report is generated automatically. If you notice any inconsistent or incorrect data, please let us know so we can fix and improve it.';
 
-    await this.mailer.sendMail({
-      to: toList,
-      cc: ccList.length ? ccList : undefined,
-      subject: `Vendor Report — ${reportDate}`,
-      html,
-      attachments: [
-        {
-          filename: `Vendor_Report_${reportDate}.xlsx`,
-          content: buffer,
-        },
-      ],
-    });
+    let sentCount = 0;
+    for (const vendor of vendorAggList) {
+      if (vendor.campuses.size === 0) {
+        this.logger.log(`Vendor report email skipped (0 campus/client): ${vendor.vendorName}`);
+        continue;
+      }
+      const { emailRows, emailCols } = this.buildSingleVendorEmailRows(vendor);
+      const html = buildEmailTemplate({
+        title: `Vendor / Publisher — ${vendor.vendorName}`,
+        date: reportDate,
+        summaryCards: [
+          { label: 'Medium codes', value: vendor.codes.join(', ') || '—' },
+          { label: 'Total leads', value: vendor.totalLeads },
+          { label: 'Total applications', value: vendor.totalApplications },
+        ],
+        columns: emailCols,
+        rows: emailRows,
+        footerNote,
+      });
 
-    return { success: true };
+      await this.mailer.sendMail({
+        to: toList,
+        cc: ccList.length ? ccList : undefined,
+        subject: `Vendor Report — ${vendor.vendorName} — ${reportDate}`,
+        html,
+      });
+      sentCount += 1;
+      this.logger.log(`Vendor report email sent: ${vendor.vendorName}`);
+    }
+
+    if (sentCount === 0) {
+      return { success: true, message: 'Skipped — no vendor has campus/client data.' };
+    }
+
+    return { success: true, message: `Sent ${sentCount} vendor email(s).` };
   }
 
   private resolvePublisherCsvPath(): string | null {
@@ -291,94 +289,29 @@ export class VendorReportService {
     return agg;
   }
 
-  private async buildVendorExcel(
-    vendors: VendorAggregate[],
-    reportDate: string,
-    overallLeads: number,
-    overallApplications: number,
-  ): Promise<{
-    buffer: Buffer;
+  private buildSingleVendorEmailRows(vendor: VendorAggregate): {
     emailRows: Record<string, unknown>[];
     emailCols: { key: string; label: string }[];
-  }> {
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Vendor Report');
-    ws.columns = [
-      { key: 'campus', width: 48 },
-      { key: 'leads', width: 14 },
-      { key: 'applications', width: 16 },
-    ];
-
-    const emailRows: Record<string, unknown>[] = [];
+  } {
     const emailCols = [
-      { key: 'vendor', label: 'Vendor' },
       { key: 'campus', label: 'Campus' },
       { key: 'leads', label: 'Leads' },
       { key: 'applications', label: 'Applications' },
     ];
-
-    ws.addRow([`Vendor Report (${reportDate})`]);
-    ws.mergeCells(1, 1, 1, 3);
-    ws.getRow(1).font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
-    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B3A68' } };
-    ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'left' };
-
-    ws.addRow(['Overall Total', overallLeads, overallApplications]);
-    ws.getRow(2).font = { bold: true };
-    ws.getRow(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF4E5' } };
-
-    ws.addRow([]);
-    let rowPointer = 4;
-
-    for (const vendor of vendors) {
-      ws.addRow([vendor.vendorName]);
-      ws.mergeCells(rowPointer, 1, rowPointer, 3);
-      ws.getRow(rowPointer).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      ws.getRow(rowPointer).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B3A68' } };
-      rowPointer += 1;
-
-      ws.addRow([`CODE: ${vendor.codes.join(', ')}`]);
-      ws.mergeCells(rowPointer, 1, rowPointer, 3);
-      ws.getRow(rowPointer).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      ws.getRow(rowPointer).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF8A6F00' } };
-      rowPointer += 1;
-
-      ws.addRow(['Total', vendor.totalLeads, vendor.totalApplications]);
-      ws.getRow(rowPointer).font = { bold: true };
-      ws.getRow(rowPointer).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC4D4C0' } };
-      rowPointer += 1;
-
-      ws.addRow(['Campus', 'Leads', 'Applications']);
-      ws.getRow(rowPointer).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      ws.getRow(rowPointer).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF8F8F8F' } };
-      rowPointer += 1;
-
-      const campuses = Array.from(vendor.campuses.values()).sort((a, b) => a.campus.localeCompare(b.campus));
+    const emailRows: Record<string, unknown>[] = [];
+    const campuses = Array.from(vendor.campuses.values()).sort((a, b) => a.campus.localeCompare(b.campus));
+    if (campuses.length === 0) {
+      emailRows.push({ campus: '—', leads: 0, applications: 0 });
+    } else {
       for (const c of campuses) {
-        ws.addRow([c.campus, c.leads, c.applications]);
-        rowPointer += 1;
         emailRows.push({
-          vendor: vendor.vendorName,
           campus: c.campus,
           leads: c.leads,
           applications: c.applications,
         });
       }
-      ws.addRow([]);
-      rowPointer += 1;
-
-      if (campuses.length === 0) {
-        emailRows.push({
-          vendor: vendor.vendorName,
-          campus: '—',
-          leads: 0,
-          applications: 0,
-        });
-      }
     }
-
-    const buffer = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
-    return { buffer, emailRows, emailCols };
+    return { emailRows, emailCols };
   }
 
   private getReportDateString(): string {

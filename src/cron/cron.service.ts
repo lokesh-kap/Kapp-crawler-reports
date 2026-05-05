@@ -13,6 +13,8 @@ function buildReportCronExpression(): string {
 @Injectable()
 export class CronService {
   private readonly logger = new Logger(CronService.name);
+  private readonly cronQueue: Array<{ name: string; task: () => Promise<void> }> = [];
+  private isProcessingQueue = false;
 
   private get baseUrl() {
     return `http://localhost:${process.env.PORT ?? 9002}`;
@@ -30,19 +32,51 @@ export class CronService {
     }
   }
 
-  @Cron('15 00 * * *', { timeZone: 'Asia/Kolkata' })
-  async adsAndNpfSync() {
-    await this.callApi('/ads-engine/sync', 'Ads Sync');
-    await this.callApi('/scraper/schedule/npf-funnel/run', 'NPF Funnel + Campaign Scrape');
+  private enqueueCronTask(name: string, task: () => Promise<void>) {
+    this.cronQueue.push({ name, task });
+    this.logger.log(`📥 Queued cron task: ${name} (queue size: ${this.cronQueue.length})`);
+    void this.processQueue();
   }
 
-  @Cron('00 11 * * *', { timeZone: 'Asia/Kolkata' })
+  private async processQueue() {
+    if (this.isProcessingQueue) return;
+    this.isProcessingQueue = true;
+    try {
+      while (this.cronQueue.length > 0) {
+        const next = this.cronQueue.shift();
+        if (!next) continue;
+        this.logger.log(`🚀 Running queued cron task: ${next.name}`);
+        try {
+          await next.task();
+          this.logger.log(`✅ Queued cron task completed: ${next.name}`);
+        } catch (err: any) {
+          this.logger.error(`❌ Queued cron task failed: ${next.name} - ${err?.message ?? err}`);
+        }
+      }
+    } finally {
+      this.isProcessingQueue = false;
+    }
+  }
+
+  @Cron('05 00 * * *', { timeZone: 'Asia/Kolkata' })
+  async adsAndNpfSync() {
+    this.enqueueCronTask('Ads + NPF Sync', async () => {
+      await this.callApi('/ads-engine/sync', 'Ads Sync');
+      await this.callApi('/scraper/schedule/npf-funnel/run', 'NPF Funnel + Campaign Scrape');
+    });
+  }
+
+  @Cron('00 10 * * *', { timeZone: 'Asia/Kolkata' })
   async reportEmailSchedule() {
     if (!(`${process.env.REPORT_CRON_ENABLED}` === 'true')) return;
-    const reportCalls = [
-      this.callApi('/reports/email', 'Daily Report Email (Overall + Zone-wise)'),
-      this.callApi('/reports/google-ads-email', 'Google Ads Report Email'),
-    ];
-    await Promise.allSettled(reportCalls);
+    this.enqueueCronTask('Daily Report Emails', async () => {
+      const reportCalls = [
+        this.callApi('/reports/email', 'Daily Report Email (Overall + Zone-wise)'),
+        this.callApi('/reports/google-ads-email', 'Google Ads Report Email'),
+        this.callApi('/reports/vendor-email', 'Vendor Report Email'),
+        this.callApi('/reports/database-email', 'Database Report Email'),
+      ];
+      await Promise.allSettled(reportCalls);
+    });
   }
 }
