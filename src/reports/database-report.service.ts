@@ -4,28 +4,25 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as ExcelJS from 'exceljs';
 import { parse } from 'csv-parse/sync';
-import axios from 'axios';
 import { MailerService } from '../common/mailer/mailer.service';
-import { classicEmailTemplate } from '../common/mailer/classic-email-template';
+import { buildEmailTemplate } from '../common/mailer/email-template';
 
 type DatabaseMappingRow = {
-  client_id: number;
   database_name: string;
   medium_code: string;
 };
 
 type SummaryAggregateRow = {
-  client_id: number;
   medium_code: string;
-  primary_leads: number;
-  secondary_leads: number;
-  tertiary_leads: number;
-  total_instances: number;
-  verified_leads: number;
-  unverified_leads: number;
-  form_initiated: number;
-  primary_applications: number;
-  primary_enrolments: number;
+  primary_leads: number | null;
+  secondary_leads: number | null;
+  tertiary_leads: number | null;
+  total_instances: number | null;
+  verified_leads: number | null;
+  unverified_leads: number | null;
+  form_initiated: number | null;
+  primary_applications: number | null;
+  primary_enrolments: number | null;
   duplicate_leads: number | null;
   duplicate_form_initiated: number | null;
   duplicate_applications: number | null;
@@ -35,7 +32,6 @@ type SummaryAggregateRow = {
 type DatabaseReportRow = {
   database_name: string;
   medium_code: string;
-  client_name: string;
   primary_leads: number | '';
   secondary_leads: number | '';
   tertiary_leads: number | '';
@@ -117,28 +113,26 @@ export class DatabaseReportService {
       trim: false,
     }) as Array<Record<string, string>>;
 
-    let currentClientId: number | null = null;
     const unique = new Map<string, DatabaseMappingRow>();
 
     for (const row of records) {
-      const rawClientId = this.getCsvValue(row, ['KAPP ID', 'Kapp Id', 'kapp id']);
-      if (rawClientId && rawClientId.toLowerCase() !== '(blank)') {
-        const parsed = Number(rawClientId);
-        currentClientId = Number.isFinite(parsed) ? parsed : null;
-      }
-      if (!currentClientId) continue;
-
-      const databaseName = this.getCsvValue(row, ['Source2', 'source2']);
+      const databaseName = this.getCsvValue(row, [
+        'Source2',
+        'source2',
+        'Database Name Code',
+        'database name code',
+        'Database Name',
+        'database name',
+      ]);
       const mediumCode = this.getCsvValue(row, ['Medium', 'medium']);
       if (!mediumCode || mediumCode.toLowerCase() === '(blank)') continue;
 
       const normalizedDatabaseName =
         !databaseName || databaseName.toLowerCase() === '(blank)' ? '(blank)' : databaseName;
 
-      const key = `${currentClientId}::${normalizedDatabaseName.toLowerCase()}::${mediumCode.toLowerCase()}`;
+      const key = `${normalizedDatabaseName.toLowerCase()}::${mediumCode.toLowerCase()}`;
       if (unique.has(key)) continue;
       unique.set(key, {
-        client_id: currentClientId,
         database_name: normalizedDatabaseName,
         medium_code: mediumCode,
       });
@@ -150,13 +144,11 @@ export class DatabaseReportService {
       const chunkSize = 5000;
       for (let start = 0; start < rows.length; start += chunkSize) {
         const chunk = rows.slice(start, start + chunkSize);
-        const valuesSql = chunk
-          .map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`)
-          .join(', ');
-        const params = chunk.flatMap((r) => [r.client_id, r.database_name, r.medium_code]);
+        const valuesSql = chunk.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(', ');
+        const params = chunk.flatMap((r) => [r.database_name, r.medium_code]);
         await this.dataSource.query(
           `
-          INSERT INTO database_medium_codes (client_id, database_name, medium_code)
+          INSERT INTO database_medium_codes (database_name, medium_code)
           VALUES ${valuesSql}
           `,
           params,
@@ -183,10 +175,7 @@ export class DatabaseReportService {
     }
 
     const summaryRows = await this.fetchSummaryRows(reportDate);
-    const clientNames = await this.fetchLmsClientNameMap();
-    const rows = this.buildReportRows(mappings, summaryRows, clientNames);
-
-    const { buffer } = await this.buildExcel(rows, reportDate);
+    const rows = this.buildReportRows(mappings, summaryRows);
     const toList = this.parseEmailList(process.env.REPORT_DATABASE_TO);
     const ccList = this.parseEmailList(process.env.REPORT_DATABASE_CC);
     if (toList.length === 0) {
@@ -194,15 +183,20 @@ export class DatabaseReportService {
       return { success: true, message: 'Skipped — no recipients.' };
     }
 
-    const html = classicEmailTemplate({
-      title: `Database Report - ${reportDate}`,
-      intro: `Please find attached the Database Report for ${reportDate}.`,
-      highlights: [
-        `Rows: ${rows.length}`,
-        `Databases: ${new Set(rows.map((x) => x.database_name)).size}`,
-        `Unique medium codes: ${new Set(rows.map((x) => x.medium_code.toLowerCase())).size}`,
+    const columns = this.getDatabaseReportColumns();
+    const html = buildEmailTemplate({
+      title: 'Database Report',
+      subtitle: 'Daily medium-code summary',
+      date: reportDate,
+      summaryCards: [
+        { label: 'Rows', value: rows.length },
+        { label: 'Databases', value: new Set(rows.map((x) => x.database_name)).size },
+        { label: 'Unique medium codes', value: new Set(rows.map((x) => x.medium_code.toLowerCase())).size },
       ],
-      closingText: 'The full report is attached in Excel format for detailed review.',
+      columns: columns.map((c) => ({ key: c.key, label: c.header })),
+      rows: rows as Record<string, unknown>[],
+      footerNote:
+        'This report is generated automatically. If you notice any inconsistent or incorrect data, please let us know so we can fix and improve it.',
     });
 
     await this.mailer.sendMail({
@@ -210,12 +204,6 @@ export class DatabaseReportService {
       cc: ccList.length ? ccList : undefined,
       subject: `Database Report — ${reportDate}`,
       html,
-      attachments: [
-        {
-          filename: `Database_Report_${reportDate}.xlsx`,
-          content: buffer,
-        },
-      ],
     });
 
     return { success: true };
@@ -225,7 +213,6 @@ export class DatabaseReportService {
     await this.dataSource.query(`
       CREATE TABLE IF NOT EXISTS database_medium_codes (
         id SERIAL PRIMARY KEY,
-        client_id integer NOT NULL,
         database_name text NOT NULL,
         medium_code text NOT NULL,
         created_at timestamptz NOT NULL DEFAULT now(),
@@ -233,8 +220,14 @@ export class DatabaseReportService {
       )
     `);
     await this.dataSource.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS uq_database_medium_codes_client_db_medium
-      ON database_medium_codes (client_id, lower(database_name), lower(medium_code))
+      DROP INDEX IF EXISTS uq_database_medium_codes_client_db_medium
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE database_medium_codes DROP COLUMN IF EXISTS client_id
+    `);
+    await this.dataSource.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_database_medium_codes_db_medium
+      ON database_medium_codes (lower(database_name), lower(medium_code))
     `);
   }
 
@@ -274,14 +267,12 @@ export class DatabaseReportService {
   private async fetchMappings(): Promise<DatabaseMappingRow[]> {
     const rows = await this.dataSource.query(`
       SELECT
-        client_id::int AS client_id,
         database_name::text AS database_name,
         medium_code::text AS medium_code
       FROM database_medium_codes
       ORDER BY database_name ASC, medium_code ASC
     `);
     return rows.map((r: any) => ({
-      client_id: Number(r.client_id),
       database_name: String(r.database_name ?? '').trim(),
       medium_code: String(r.medium_code ?? '').trim(),
     }));
@@ -291,80 +282,34 @@ export class DatabaseReportService {
     const rows = await this.dataSource.query(
       `
       SELECT
-        s.client_id::int AS client_id,
         lower(trim(COALESCE(s.medium, '')))::text AS medium_code,
-        SUM(
-          CASE
-            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
-              AND s.primary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
-            THEN s.primary_leads::numeric
-            ELSE 0
-          END
-        )::numeric AS primary_leads,
-        SUM(
-          CASE
-            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
-              AND s.secondary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
-            THEN s.secondary_leads::numeric
-            ELSE 0
-          END
-        )::numeric AS secondary_leads,
-        SUM(
-          CASE
-            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
-              AND s.tertiary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
-            THEN s.tertiary_leads::numeric
-            ELSE 0
-          END
-        )::numeric AS tertiary_leads,
-        SUM(
-          CASE
-            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
-              AND s.total_instances ~ '^-?[0-9]+(\\.[0-9]+)?$'
-            THEN s.total_instances::numeric
-            ELSE 0
-          END
-        )::numeric AS total_instances,
-        SUM(
-          CASE
-            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
-              AND s.verified_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
-            THEN s.verified_leads::numeric
-            ELSE 0
-          END
-        )::numeric AS verified_leads,
-        SUM(
-          CASE
-            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
-              AND s.unverified_leads ~ '^-?[0-9]+(\\.[0-9]+)?$'
-            THEN s.unverified_leads::numeric
-            ELSE 0
-          END
-        )::numeric AS unverified_leads,
-        SUM(
-          CASE
-            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
-              AND s.form_initiated ~ '^-?[0-9]+(\\.[0-9]+)?$'
-            THEN s.form_initiated::numeric
-            ELSE 0
-          END
-        )::numeric AS form_initiated,
-        SUM(
-          CASE
-            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
-              AND s.payment_approved ~ '^-?[0-9]+(\\.[0-9]+)?$'
-            THEN s.payment_approved::numeric
-            ELSE 0
-          END
-        )::numeric AS primary_applications,
-        SUM(
-          CASE
-            WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none'
-              AND s.enrolments ~ '^-?[0-9]+(\\.[0-9]+)?$'
-            THEN s.enrolments::numeric
-            ELSE 0
-          END
-        )::numeric AS primary_enrolments,
+        CASE WHEN COUNT(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.primary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN 1 END) > 0
+          THEN SUM(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.primary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.primary_leads::numeric ELSE 0 END)::numeric
+          ELSE NULL END AS primary_leads,
+        CASE WHEN COUNT(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.secondary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN 1 END) > 0
+          THEN SUM(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.secondary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.secondary_leads::numeric ELSE 0 END)::numeric
+          ELSE NULL END AS secondary_leads,
+        CASE WHEN COUNT(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.tertiary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN 1 END) > 0
+          THEN SUM(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.tertiary_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.tertiary_leads::numeric ELSE 0 END)::numeric
+          ELSE NULL END AS tertiary_leads,
+        CASE WHEN COUNT(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.total_instances ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN 1 END) > 0
+          THEN SUM(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.total_instances ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.total_instances::numeric ELSE 0 END)::numeric
+          ELSE NULL END AS total_instances,
+        CASE WHEN COUNT(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.verified_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN 1 END) > 0
+          THEN SUM(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.verified_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.verified_leads::numeric ELSE 0 END)::numeric
+          ELSE NULL END AS verified_leads,
+        CASE WHEN COUNT(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.unverified_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN 1 END) > 0
+          THEN SUM(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.unverified_leads ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.unverified_leads::numeric ELSE 0 END)::numeric
+          ELSE NULL END AS unverified_leads,
+        CASE WHEN COUNT(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.form_initiated ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN 1 END) > 0
+          THEN SUM(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.form_initiated ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.form_initiated::numeric ELSE 0 END)::numeric
+          ELSE NULL END AS form_initiated,
+        CASE WHEN COUNT(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.payment_approved ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN 1 END) > 0
+          THEN SUM(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.payment_approved ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.payment_approved::numeric ELSE 0 END)::numeric
+          ELSE NULL END AS primary_applications,
+        CASE WHEN COUNT(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.enrolments ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN 1 END) > 0
+          THEN SUM(CASE WHEN lower(trim(COALESCE(s.filter_applied, 'none'))) = 'none' AND s.enrolments ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN s.enrolments::numeric ELSE 0 END)::numeric
+          ELSE NULL END AS primary_enrolments,
         CASE
           WHEN COUNT(
             CASE
@@ -459,22 +404,21 @@ export class DatabaseReportService {
         END AS duplicate_admissions
       FROM client_wise_summary_data s
       WHERE (s.created_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date
-      GROUP BY s.client_id, lower(trim(COALESCE(s.medium, '')))
+      GROUP BY lower(trim(COALESCE(s.medium, '')))
       `,
       [reportDate],
     );
     return rows.map((r: any) => ({
-      client_id: Number(r.client_id),
       medium_code: String(r.medium_code ?? '').trim().toLowerCase(),
-      primary_leads: Number(r.primary_leads ?? 0),
-      secondary_leads: Number(r.secondary_leads ?? 0),
-      tertiary_leads: Number(r.tertiary_leads ?? 0),
-      total_instances: Number(r.total_instances ?? 0),
-      verified_leads: Number(r.verified_leads ?? 0),
-      unverified_leads: Number(r.unverified_leads ?? 0),
-      form_initiated: Number(r.form_initiated ?? 0),
-      primary_applications: Number(r.primary_applications ?? 0),
-      primary_enrolments: Number(r.primary_enrolments ?? 0),
+      primary_leads: this.toNullableNumber(r.primary_leads),
+      secondary_leads: this.toNullableNumber(r.secondary_leads),
+      tertiary_leads: this.toNullableNumber(r.tertiary_leads),
+      total_instances: this.toNullableNumber(r.total_instances),
+      verified_leads: this.toNullableNumber(r.verified_leads),
+      unverified_leads: this.toNullableNumber(r.unverified_leads),
+      form_initiated: this.toNullableNumber(r.form_initiated),
+      primary_applications: this.toNullableNumber(r.primary_applications),
+      primary_enrolments: this.toNullableNumber(r.primary_enrolments),
       duplicate_leads: this.toNullableNumber(r.duplicate_leads),
       duplicate_form_initiated: this.toNullableNumber(r.duplicate_form_initiated),
       duplicate_applications: this.toNullableNumber(r.duplicate_applications),
@@ -482,59 +426,39 @@ export class DatabaseReportService {
     }));
   }
 
-  private async fetchLmsClientNameMap(): Promise<Map<number, string>> {
-    const out = new Map<number, string>();
-    const backendUrl = (process.env.LMS_BACKEND_URL || 'http://127.0.0.1:9001').replace(/\/+$/, '');
-    const apiKey = process.env.REPORTING_METADATA_API_SECRET_KEY || 'kapp-crawler-reports';
-    try {
-      const response = await axios.get(`${backendUrl}/clients/reporting-metadata`, {
-        headers: { 'x-api-key': apiKey },
-      });
-      const rows = (response.data?.data ?? []) as Array<Record<string, unknown>>;
-      for (const row of rows) {
-        const clientId = Number(row.client_id);
-        if (!Number.isFinite(clientId)) continue;
-        const clientName = String(row.client_name ?? '').trim();
-        out.set(clientId, clientName || `Client ${clientId}`);
-      }
-    } catch (err: any) {
-      this.logger.warn(`Database report: failed to fetch LMS metadata (${err?.message ?? err}).`);
-    }
-    return out;
-  }
-
   private buildReportRows(
     mappings: DatabaseMappingRow[],
     summaryRows: SummaryAggregateRow[],
-    clientNames: Map<number, string>,
   ): DatabaseReportRow[] {
     const summaryMap = new Map<string, SummaryAggregateRow>();
     for (const s of summaryRows) {
-      summaryMap.set(`${s.client_id}::${s.medium_code}`, s);
+      summaryMap.set(s.medium_code, s);
     }
 
-    return mappings.map((m) => {
+    const rows: DatabaseReportRow[] = mappings.map((m): DatabaseReportRow => {
       const mediumNorm = m.medium_code.trim().toLowerCase();
-      const data = summaryMap.get(`${m.client_id}::${mediumNorm}`);
+      const data = summaryMap.get(mediumNorm);
       return {
         database_name: m.database_name,
         medium_code: m.medium_code,
-        client_name: clientNames.get(m.client_id) || `Client ${m.client_id}`,
-        primary_leads: data ? data.primary_leads : '',
-        secondary_leads: data ? data.secondary_leads : '',
-        tertiary_leads: data ? data.tertiary_leads : '',
-        total_instances: data ? data.total_instances : '',
-        verified_leads: data ? data.verified_leads : '',
-        unverified_leads: data ? data.unverified_leads : '',
-        form_initiated: data ? data.form_initiated : '',
-        primary_applications: data ? data.primary_applications : '',
-        primary_enrolments: data ? data.primary_enrolments : '',
+        primary_leads: data ? (data.primary_leads ?? '') : '',
+        secondary_leads: data ? (data.secondary_leads ?? '') : '',
+        tertiary_leads: data ? (data.tertiary_leads ?? '') : '',
+        total_instances: data ? (data.total_instances ?? '') : '',
+        verified_leads: data ? (data.verified_leads ?? '') : '',
+        unverified_leads: data ? (data.unverified_leads ?? '') : '',
+        form_initiated: data ? (data.form_initiated ?? '') : '',
+        primary_applications: data ? (data.primary_applications ?? '') : '',
+        primary_enrolments: data ? (data.primary_enrolments ?? '') : '',
         duplicate_leads: data ? (data.duplicate_leads ?? '') : '',
         duplicate_form_initiated: data ? (data.duplicate_form_initiated ?? '') : '',
         duplicate_applications: data ? (data.duplicate_applications ?? '') : '',
         duplicate_admissions: data ? (data.duplicate_admissions ?? '') : '',
       };
     });
+
+    rows.sort((a, b) => Number(b.primary_applications || 0) - Number(a.primary_applications || 0));
+    return rows;
   }
 
   private toNullableNumber(value: unknown): number | null {
@@ -549,24 +473,7 @@ export class DatabaseReportService {
   ): Promise<{ buffer: Buffer }> {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Database Report');
-    const columns = [
-      { header: 'Database Name', key: 'database_name', width: 28 },
-      { header: 'Medium Code', key: 'medium_code', width: 18 },
-      { header: 'Client Name', key: 'client_name', width: 30 },
-      { header: 'Primary Leads', key: 'primary_leads', width: 14 },
-      { header: 'Secondary Leads', key: 'secondary_leads', width: 16 },
-      { header: 'Tertiary Leads', key: 'tertiary_leads', width: 14 },
-      { header: 'Total Instances', key: 'total_instances', width: 14 },
-      { header: 'Verified Leads', key: 'verified_leads', width: 14 },
-      { header: 'Unverified leads', key: 'unverified_leads', width: 16 },
-      { header: 'Form Initiated', key: 'form_initiated', width: 14 },
-      { header: 'Primary Applications', key: 'primary_applications', width: 18 },
-      { header: 'Primary Enrolments', key: 'primary_enrolments', width: 16 },
-      { header: 'Duplicate Leads', key: 'duplicate_leads', width: 18 },
-      { header: 'Duplicate Form Initiated', key: 'duplicate_form_initiated', width: 24 },
-      { header: 'Duplicate Application', key: 'duplicate_applications', width: 22 },
-      { header: 'Duplicate Admission', key: 'duplicate_admissions', width: 20 },
-    ];
+    const columns = this.getDatabaseReportColumns();
 
     ws.columns = columns.map((c) => ({ key: c.key, width: c.width }));
     ws.insertRow(1, [`Database Report (${reportDate})`]);
@@ -585,6 +492,26 @@ export class DatabaseReportService {
     rows.forEach((row) => ws.addRow(row));
     const buffer = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
     return { buffer };
+  }
+
+  private getDatabaseReportColumns(): Array<{ header: string; key: keyof DatabaseReportRow; width: number }> {
+    return [
+      { header: 'Database Name', key: 'database_name', width: 28 },
+      { header: 'Medium Code', key: 'medium_code', width: 18 },
+      { header: 'Primary Leads', key: 'primary_leads', width: 14 },
+      { header: 'Secondary Leads', key: 'secondary_leads', width: 16 },
+      { header: 'Tertiary Leads', key: 'tertiary_leads', width: 14 },
+      { header: 'Total Instances', key: 'total_instances', width: 14 },
+      { header: 'Verified Leads', key: 'verified_leads', width: 14 },
+      { header: 'Unverified leads', key: 'unverified_leads', width: 16 },
+      { header: 'Form Initiated', key: 'form_initiated', width: 14 },
+      { header: 'Primary Applications', key: 'primary_applications', width: 18 },
+      { header: 'Primary Enrolments', key: 'primary_enrolments', width: 16 },
+      { header: 'Duplicate Leads', key: 'duplicate_leads', width: 18 },
+      { header: 'Duplicate Form Initiated', key: 'duplicate_form_initiated', width: 24 },
+      { header: 'Duplicate Application', key: 'duplicate_applications', width: 22 },
+      { header: 'Duplicate Admission', key: 'duplicate_admissions', width: 20 },
+    ];
   }
 
   private getReportDateString(): string {

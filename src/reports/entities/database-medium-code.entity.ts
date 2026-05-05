@@ -11,9 +11,6 @@ export class DatabaseMediumCodeEntity {
   @PrimaryGeneratedColumn('increment')
   id: number;
 
-  @Column({ type: 'integer' })
-  client_id: number;
-
   @Column({ type: 'text' })
   database_name: string;
 

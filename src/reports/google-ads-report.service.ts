@@ -186,6 +186,8 @@ export class GoogleAdsReportService {
    * Leads/apps/enrolments are mapped from client_wise_summary_data and converted
    * from cumulative snapshots to daily deltas using:
    * current(metric_date) - previous_available(metric_date).
+   * If there is no prior snapshot (same idea as overall NPF report), daily/monthly
+   * delta columns are NULL instead of treating missing previous as zero.
    */
   private async fetchLatestCampaignRows(reportDate: string, campaignMetricsDate: string): Promise<any[]> {
     return this.dataSource.query(
@@ -252,26 +254,32 @@ export class GoogleAdsReportService {
           mc."campaignInfoId",
           CASE
             WHEN curr.metric_date IS NULL THEN NULL
+            WHEN prev_day.metric_date IS NULL THEN NULL
             ELSE GREATEST(0, COALESCE(curr.leads, 0) - COALESCE(prev_day.leads, 0))::bigint
           END AS daily_leads,
           CASE
             WHEN curr.metric_date IS NULL THEN NULL
+            WHEN prev_day.metric_date IS NULL THEN NULL
             ELSE GREATEST(0, COALESCE(curr.applications, 0) - COALESCE(prev_day.applications, 0))::bigint
           END AS daily_apps,
           CASE
             WHEN curr.metric_date IS NULL THEN NULL
+            WHEN prev_day.metric_date IS NULL THEN NULL
             ELSE GREATEST(0, COALESCE(curr.enrolments, 0) - COALESCE(prev_day.enrolments, 0))::numeric
           END AS daily_enrolments,
           CASE
             WHEN monthly_curr.metric_date IS NULL THEN NULL
+            WHEN prev_month.metric_date IS NULL THEN NULL
             ELSE GREATEST(0, COALESCE(monthly_curr.leads, 0) - COALESCE(prev_month.leads, 0))::bigint
           END AS monthly_leads,
           CASE
             WHEN monthly_curr.metric_date IS NULL THEN NULL
+            WHEN prev_month.metric_date IS NULL THEN NULL
             ELSE GREATEST(0, COALESCE(monthly_curr.applications, 0) - COALESCE(prev_month.applications, 0))::bigint
           END AS monthly_apps,
           CASE
             WHEN monthly_curr.metric_date IS NULL THEN NULL
+            WHEN prev_month.metric_date IS NULL THEN NULL
             ELSE GREATEST(0, COALESCE(monthly_curr.enrolments, 0) - COALESCE(prev_month.enrolments, 0))::numeric
           END AS monthly_enrolments,
           CASE WHEN curr.metric_date IS NULL THEN NULL ELSE COALESCE(curr.leads, 0)::bigint END AS total_leads,
@@ -291,7 +299,7 @@ export class GoogleAdsReportService {
           LIMIT 1
         ) monthly_curr ON true
         LEFT JOIN LATERAL (
-          SELECT sc.leads, sc.applications, sc.enrolments
+          SELECT sc.metric_date, sc.leads, sc.applications, sc.enrolments
           FROM summary_cumulative sc
           WHERE sc."campaignInfoId" = mc."campaignInfoId"
             AND sc.metric_date < rd.report_date
@@ -299,7 +307,7 @@ export class GoogleAdsReportService {
           LIMIT 1
         ) prev_day ON true
         LEFT JOIN LATERAL (
-          SELECT sc.leads, sc.applications, sc.enrolments
+          SELECT sc.metric_date, sc.leads, sc.applications, sc.enrolments
           FROM summary_cumulative sc
           WHERE sc."campaignInfoId" = mc."campaignInfoId"
             AND sc.metric_date < date_trunc('month', rd.monthly_anchor_date)::date
